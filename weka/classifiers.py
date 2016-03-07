@@ -7,7 +7,7 @@ Light wrapper around Weka.
 Added method load_raw() to load a raw Weka model file directly.
 Added support to retrieving probability distribution of a prediction.
 """
-VERSION = (0, 1, 5)
+VERSION = (0, 1, 6)
 __version__ = '.'.join(map(str, VERSION))
 
 from subprocess import Popen, PIPE
@@ -144,7 +144,27 @@ WEKA_TEST_ACCURACY_REGEX = re.compile('===\s+Error on test data\s+===\n+\s' + \
     '*\n+\s*Correctly Classified Instances\s+[0-9]+\s+([0-9\.]+)\s+%',
     re.DOTALL)
 
-PredictionResult = namedtuple('PredictionResult', ['actual', 'predicted', 'probability'])
+class PredictionResult(object):
+    
+    def __init__(self, actual, predicted, probability):
+        self.actual = actual
+        self.predicted = predicted
+        self.probability = probability
+    
+    @property
+    def certainty(self):
+        return self.probability.get(self.predicted)
+    
+    def __hash__(self):
+        return hash((self.actual, self.predicted, self.probability))
+    
+    def __cmp__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return cmp(
+            (self.actual, self.predicted, self.probability),
+            (other.actual, other.predicted, other.probability),
+        )
 
 def get_weka_accuracy(arff_fn, arff_test_fn, cls):
     assert cls in WEKA_CLASSIFIERS, "Unknown Weka classifier: %s" % (cls,)
@@ -177,6 +197,9 @@ class Classifier(object):
         self.name = name # Weka classifier class name.
         self.schema = None
         self.ckargs = ckargs
+        
+        self.last_training_stdout = None
+        self.last_training_stderr = None
 
     @classmethod
     def load(cls, fn, compress=True, *args, **kwargs):
@@ -287,6 +310,10 @@ class Classifier(object):
             stdin, stdout, stderr = (p.stdin, p.stdout, p.stderr)
             stdout_str = stdout.read()
             stderr_str = stderr.read()
+            
+            self.last_training_stdout = stdout_str
+            self.last_training_stderr = stderr_str
+            
             if verbose:
                 print 'stdout:'
                 print stdout_str

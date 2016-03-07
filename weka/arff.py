@@ -100,7 +100,8 @@ class Value(object):
 class Integer(Value):
     c_type = TYPE_INTEGER
     def __init__(self, v, *args, **kwargs):
-        v = int(v)
+        if v != MISSING:
+            v = int(v)
         super(Integer, self).__init__(v, *args, **kwargs)
 Int = Integer
 
@@ -108,7 +109,8 @@ class Numeric(Value):
     c_type = TYPE_NUMERIC
     def __init__(self, v, *args, **kwargs):
         # TODO:causes loss of precision?
-        v = float(v)
+        if v != MISSING:
+            v = float(v)
         super(Numeric, self).__init__(v, *args, **kwargs)
 Num = Numeric
 
