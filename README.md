@@ -41,4 +41,26 @@ pickled and unpickled like any normal Python instance:
     c.save('myclassifier.pkl')
     c = Classifier.load('myclassifier.pkl')
     predictions = c.predict('query.arff')
+
+Development
+-----------
+
+Tests require the Python development headers to be installed, which you can install on Ubuntu with:
+
+    sudo apt-get install python-dev python3-dev python3.4-dev
+
+To run unittests across multiple Python versions, install:
+
+    sudo apt-get install python3.4-minimal python3.4-dev python3.5-minimal python3.5-dev
+
+To run all [tests](http://tox.readthedocs.org/en/latest/):
+
+    export TESTNAME=; tox
+
+To run tests for a specific environment (e.g. Python 2.7 with Django 1.4):
     
+    export TESTNAME=; tox -e py27
+
+To run a specific test:
+    
+    export TESTNAME=.test_IBk; tox -e py27

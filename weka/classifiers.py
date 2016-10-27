@@ -7,21 +7,24 @@ Light wrapper around Weka.
 Added method load_raw() to load a raw Weka model file directly.
 Added support to retrieving probability distribution of a prediction.
 """
-VERSION = (0, 1, 6)
-__version__ = '.'.join(map(str, VERSION))
+from __future__ import print_function
 
-from subprocess import Popen, PIPE
 from collections import namedtuple
-import cPickle as pickle
 import gzip
 import math
 import os
 import re
 import shutil
 import subprocess
+from subprocess import Popen, PIPE
 import sys
 import tempfile
 import unittest
+
+from six.moves import cPickle as pickle
+from six import string_types as basestring # pylint: disable=redefined-builtin
+from six import iteritems
+from six import u as unicode # pylint: disable=redefined-builtin
 
 import arff
 from arff import SPARSE, DENSE, Num, Nom, Int, Str
@@ -119,7 +122,7 @@ for _name in WEKA_CLASSIFIERS:
         else:
             _ckargs[_arg_name] = _arg
     _func = _Helper(name=_name, ckargs=_ckargs)
-    exec '%s = _func' % _proper_name
+    exec('%s = _func' % _proper_name) # pylint: disable=exec-used
 
 # These can be trained incrementally.
 # http://weka.sourceforge.net/doc/weka/classifiers/UpdateableClassifier.html
@@ -137,11 +140,11 @@ UPDATEABLE_WEKA_CLASSIFIERS = [
 ]
 UPDATEABLE_WEKA_CLASSIFIER_NAMES = set(_.split('.')[-1] for _ in UPDATEABLE_WEKA_CLASSIFIERS)
 
-WEKA_ACCURACY_REGEX = re.compile('===\s+Stratified cross-validation\s+===' + \
-    '\n+\s*\n+\s*Correctly Classified Instances\s+[0-9]+\s+([0-9\.]+)\s+%',
+WEKA_ACCURACY_REGEX = re.compile(r'===\s+Stratified cross-validation\s+===' + \
+    r'\n+\s*\n+\s*Correctly Classified Instances\s+[0-9]+\s+([0-9\.]+)\s+%',
     re.DOTALL)
-WEKA_TEST_ACCURACY_REGEX = re.compile('===\s+Error on test data\s+===\n+\s' + \
-    '*\n+\s*Correctly Classified Instances\s+[0-9]+\s+([0-9\.]+)\s+%',
+WEKA_TEST_ACCURACY_REGEX = re.compile(r'===\s+Error on test data\s+===\n+\s' + \
+    r'*\n+\s*Correctly Classified Instances\s+[0-9]+\s+([0-9\.]+)\s+%',
     re.DOTALL)
 
 class PredictionResult(object):
@@ -151,6 +154,17 @@ class PredictionResult(object):
         self.predicted = predicted
         self.probability = probability
     
+    def __unicode__(self):
+        return unicode('<%s: actual=%s, predicted=%s, probability=%s>' \
+            % (type(self).__name__, self.actual, self.predicted, self.probability))
+    
+    def __str__(self):
+        return '<%s: actual=%s, predicted=%s, probability=%s>' \
+            % (type(self).__name__, self.actual, self.predicted, self.probability)
+    
+#     def __repr__(self):
+#         return unicode(self)
+    
     @property
     def certainty(self):
         return self.probability.get(self.predicted)
@@ -158,6 +172,7 @@ class PredictionResult(object):
     def __hash__(self):
         return hash((self.actual, self.predicted, self.probability))
     
+    # Note, this is ignored in Python3.
     def __cmp__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -165,12 +180,19 @@ class PredictionResult(object):
             (self.actual, self.predicted, self.probability),
             (other.actual, other.predicted, other.probability),
         )
+    
+    # Needed for Python3.
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return (self.actual, self.predicted, self.probability) == \
+            (other.actual, other.predicted, other.probability)
 
 def get_weka_accuracy(arff_fn, arff_test_fn, cls):
     assert cls in WEKA_CLASSIFIERS, "Unknown Weka classifier: %s" % (cls,)
     cmd = "java -cp /usr/share/java/weka.jar:/usr/share/java/libsvm.jar " + \
         "%(cls)s -t \"%(arff_fn)s\" -T \"%(arff_test_fn)s\"" % locals()
-    print cmd
+    print(cmd)
     output = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True).communicate()[0]
     try:
         acc = float(WEKA_TEST_ACCURACY_REGEX.findall(output)[0])
@@ -179,9 +201,9 @@ def get_weka_accuracy(arff_fn, arff_test_fn, cls):
         return 0
     except TypeError:
         return 0
-    except Exception, e:
-        print '!'*80
-        print "Unexpected Error: %s" % e
+    except Exception as e:
+        print('!'*80)
+        print("Unexpected Error: %s" % e)
         return 0
 
 class TrainingError(Exception):
@@ -220,7 +242,7 @@ class Classifier(object):
         """
         c = cls(*args, **kwargs)
         c.schema = schema.copy(schema_only=True)
-        c._model_data = open(model_fn,'rb').read()
+        c._model_data = open(model_fn, 'rb').read()
         return c
         
     def save(self, fn, compress=True):
@@ -229,18 +251,18 @@ class Classifier(object):
         if compress:
             pickle.dump(self, gzip.open(fn, 'wb'))
         else:
-            pickle.dump(self, open(fn,'wb'))
+            pickle.dump(self, open(fn, 'wb'))
         
     def _get_ckargs_str(self):
         ckargs = []
         if self.ckargs:
-            for k,v in self.ckargs.iteritems():
+            for k, v in iteritems(self.ckargs):
                 if not k.startswith('-'):
                     k = '-'+k
                 if v is None:
                     ckargs.append('%s' % (k,))
                 else:
-                    ckargs.append('%s %s' % (k,v))
+                    ckargs.append('%s %s' % (k, v))
         ckargs = ' '.join(ckargs)
         return ckargs
         
@@ -263,7 +285,8 @@ class Classifier(object):
                 assert isinstance(training_data, arff.ArffFile)
                 fd, training_fn = tempfile.mkstemp(suffix='.arff')
                 os.close(fd)
-                open(training_fn,'w').write(training_data.write())
+                with open(training_fn, 'w') as fout:
+                    fout.write(training_data.write())
                 clean_training = True
             assert training_fn
                 
@@ -276,7 +299,8 @@ class Classifier(object):
                     assert isinstance(testing_data, arff.ArffFile)
                     fd, testing_fn = tempfile.mkstemp(suffix='.arff')
                     os.close(fd)
-                    open(testing_fn,'w').write(testing_data.write())
+                    with open(testing_fn, 'w') as fout:
+                        fout.write(testing_data.write())
                     clean_testing = True
             else:
                 testing_fn = training_fn
@@ -286,7 +310,7 @@ class Classifier(object):
             fd, model_fn = tempfile.mkstemp()
             os.close(fd)
             if self._model_data:
-                fout = open(model_fn,'wb')
+                fout = open(model_fn, 'wb')
                 fout.write(self._model_data)
                 fout.close()
             
@@ -297,16 +321,24 @@ class Classifier(object):
                 model_fn=model_fn,
                 training_fn=training_fn,
                 testing_fn=testing_fn,
-                ckargs = self._get_ckargs_str(),
+                ckargs=self._get_ckargs_str(),
             )
             if self._model_data:
                 # Load existing model.
-                cmd = "java -cp %(CP)s %(classifier_name)s -l \"%(model_fn)s\" -t \"%(training_fn)s\" -T \"%(testing_fn)s\" -d \"%(model_fn)s\"" % args
+                cmd = (
+                    "java -cp %(CP)s %(classifier_name)s -l \"%(model_fn)s\" "
+                    "-t \"%(training_fn)s\" -T \"%(testing_fn)s\" -d \"%(model_fn)s\"") % args
             else:
                 # Create new model file.
-                cmd = "java -cp %(CP)s %(classifier_name)s -t \"%(training_fn)s\" -T \"%(testing_fn)s\" -d \"%(model_fn)s\" %(ckargs)s" % args
-            if verbose: print cmd
-            p = Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=sys.platform != "win32")
+                cmd = (
+                    "java -cp %(CP)s %(classifier_name)s -t \"%(training_fn)s\" "
+                    "-T \"%(testing_fn)s\" -d \"%(model_fn)s\" %(ckargs)s") % args
+            if verbose:
+                print(cmd)
+            p = Popen(
+                cmd,
+                shell=True,
+                stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=sys.platform != "win32")
             stdin, stdout, stderr = (p.stdin, p.stdout, p.stderr)
             stdout_str = stdout.read()
             stderr_str = stderr.read()
@@ -315,19 +347,21 @@ class Classifier(object):
             self.last_training_stderr = stderr_str
             
             if verbose:
-                print 'stdout:'
-                print stdout_str
-                print 'stderr:'
-                print stderr_str
+                print('stdout:')
+                print(stdout_str)
+                print('stderr:')
+                print(stderr_str)
             if stderr_str:
-                raise TrainingError, stderr_str
+                raise TrainingError(stderr_str)
             
             # Save schema.
             if not self.schema:
-                self.schema = arff.ArffFile.load(training_fn, schema_only=True).copy(schema_only=True)
+                self.schema = arff.ArffFile.load(training_fn, schema_only=True)\
+                    .copy(schema_only=True)
             
             # Save model.
-            self._model_data = open(model_fn,'rb').read()
+            with open(model_fn, 'rb') as fin:
+                self._model_data = fin.read()
             assert self._model_data
         finally:
             # Cleanup files.
@@ -338,7 +372,7 @@ class Classifier(object):
             if testing_fn and clean_testing:
                 os.remove(testing_fn)
         
-    def predict(self, query_data, verbose=False, distribution=False):
+    def predict(self, query_data, verbose=False, distribution=False, cleanup=True):
         """
         Iterates over the predicted values and probability (if supported).
         Each iteration yields a tuple of the form (prediction, probability).
@@ -363,7 +397,7 @@ class Classifier(object):
                 assert isinstance(query_data, arff.ArffFile)
                 fd, query_fn = tempfile.mkstemp(suffix='.arff')
                 os.close(fd)
-                open(query_fn,'w').write(query_data.write())
+                open(query_fn, 'w').write(query_data.write())
                 clean_query = True
             assert query_fn
                 
@@ -372,12 +406,12 @@ class Classifier(object):
             os.close(fd)
             assert self._model_data, \
                 "You must train this classifier before predicting."
-            fout = open(model_fn,'wb')
+            fout = open(model_fn, 'wb')
             fout.write(self._model_data)
             fout.close()
             
-#            print open(model_fn).read()
-#            print open(query_fn).read()
+#            print(open(model_fn).read()
+#            print(open(query_fn).read()
             # Call Weka Jar.
             args = dict(
                 CP=CP,
@@ -387,20 +421,22 @@ class Classifier(object):
                 #ckargs = self._get_ckargs_str(),
                 distribution=('-distribution' if distribution else ''),
             )
-            cmd = "java -cp %(CP)s %(classifier_name)s -p 0 %(distribution)s -l \"%(model_fn)s\" -T \"%(query_fn)s\"" % args
+            cmd = (
+                "java -cp %(CP)s %(classifier_name)s -p 0 %(distribution)s "
+                "-l \"%(model_fn)s\" -T \"%(query_fn)s\"") % args
             if verbose:
-                print cmd
+                print(cmd)
             p = Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True)
             stdin, stdout, stderr = (p.stdin, p.stdout, p.stderr)
             stdout_str = stdout.read()
             stderr_str = stderr.read()
             if verbose:
-                print 'stdout:'
-                print stdout_str
-                print 'stderr:'
-                print stderr_str
+                print('stdout:')
+                print(stdout_str)
+                print('stderr:')
+                print(stderr_str)
             if stderr_str:
-                raise PredictionError, stderr_str
+                raise PredictionError(stderr_str)
             
             if stdout_str:
                 # inst#     actual  predicted error prediction
@@ -408,14 +444,14 @@ class Classifier(object):
                 query = arff.ArffFile.load(query_fn)
                 query_variables = [
                     query.attributes[i]
-                    for i,v in enumerate(query.data[0])
+                    for i, v in enumerate(query.data[0])
                     if v == arff.MISSING]
                 if not query_variables:
                     query_variables = [query.attributes[-1]]
 #                assert query_variables, \
 #                    "There must be at least one query variable in the query."
                 if verbose:
-                    print 'query_variables:',query_variables
+                    print('query_variables:', query_variables)
                 header = 'predicted'.split(',')
                 # sample line:     1        1:?       4:36   +   1
                 
@@ -443,17 +479,11 @@ class Classifier(object):
                 #=== Predictions on test data ===
                 #
                 # inst#     actual  predicted error distribution
-                #     1        1:? 11:Acer_tr   +   0,0,0,0,0,0,0,0,0,0,*1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-                
-#                if re.findall('inst#\s+actual\s+predicted\s+error', stdout_str):
-#                    # Check for test output.
-#                    matches = re.findall("\s*([0-9\.]+)\s+([0-9\.]+)\s+([0-9\.]+)\s+([0-9\.]+)", stdout_str)
-#                    assert matches, "No results found matching test pattern in stdout: %s" % stdout_str
-#                    for match in matches:
-#                        inst, actual, predicted, error = match
-#                        yield predicted, actual
+                #     1        1:? 11:Acer_tr   +   0,0,0,0,0,0,0,0,0,0,*1,0,0,0,0,0...
 
-                q = re.findall('J48 pruned tree\s+\-+:\s+([0-9]+)\s+', stdout_str, re.MULTILINE|re.DOTALL)
+                q = re.findall(
+                    r'J48 pruned tree\s+\-+:\s+([0-9]+)\s+',
+                    stdout_str.decode('utf-8'), re.MULTILINE|re.DOTALL)
                 if q:
                     class_label = q[0]
                     prob = 1.0
@@ -461,20 +491,26 @@ class Classifier(object):
                         actual=None,
                         predicted=class_label,
                         probability=prob,)
-                elif re.findall('error\s+(?:distribution|prediction)', stdout_str):
+                elif re.findall(r'error\s+(?:distribution|prediction)', stdout_str.decode('utf-8')):
                     # Check for distribution output.
                     matches = re.findall(
-                        "^\s*[0-9\.]+\s+[a-zA-Z0-9\.\?\:]+\s+(?P<cls_value>[a-zA-Z0-9_\.\?\:]+)\s+\+?\s+(?P<prob>[a-zA-Z0-9\.\?\,\*]+)",
+                        r"^\s*[0-9\.]+\s+[a-zA-Z0-9\.\?\:]+\s+(?P<cls_value>[a-zA-Z0-9_\.\?\:]+)"
+                        r"\s+\+?\s+(?P<prob>[a-zA-Z0-9\.\?\,\*]+)",
                         stdout_str,
                         re.MULTILINE)
-                    assert matches, "No results found matching distribution pattern in stdout: %s" % stdout_str
+                    assert matches, \
+                        ("No results found matching distribution pattern in stdout: %s") \
+                            % stdout_str
                     for match in matches:
-                        prediction,prob = match
-                        class_index,class_label = prediction.split(':')
+                        prediction, prob = match
+                        class_index, class_label = prediction.split(':')
                         class_index = int(class_index)
                         if distribution:
-                            # Convert list of probabilities into a hash linking the prob to the associated class value.
-                            prob = dict(zip(query.attribute_data[query.attributes[-1]], map(float, prob.replace('*','').split(','))))
+                            # Convert list of probabilities into a hash linking the prob
+                            # to the associated class value.
+                            prob = dict(zip(
+                                query.attribute_data[query.attributes[-1]],
+                                map(float, prob.replace('*', '').split(','))))
                         else:
                             prob = float(prob)
                         class_label = query.attribute_data[query.attributes[-1]][class_index-1]
@@ -485,13 +521,14 @@ class Classifier(object):
                 else:
                     # Otherwise, assume a simple output.
                     matches = re.findall(
-                        "^\s*([0-9\.]+)\s+([a-zA-Z0-9\.\?\:]+)\s+([a-zA-Z0-9_\.\?\:]+)\s+",
-                        stdout_str,
+                        r"^\s*([0-9\.]+)\s+([a-zA-Z0-9\.\?\:]+)\s+([a-zA-Z0-9_\.\?\:]+)\s+",
+                        stdout_str.decode('utf-8'),
                         re.MULTILINE)
-                    assert matches, "No results found matching simple pattern in stdout: %s" % stdout_str
-                    #print 'matches:',len(matches)
+                    assert matches, \
+                        "No results found matching simple pattern in stdout: %s" % stdout_str
+                    #print('matches:',len(matches)
                     for match in matches:
-                        inst,actual,predicted = match
+                        inst, actual, predicted = match
                         class_name = query.attributes[-1]
                         actual_value = query.get_attribute_value(class_name, actual)
                         predicted_value = query.get_attribute_value(class_name, predicted)
@@ -501,11 +538,12 @@ class Classifier(object):
                             probability=None,)
         finally:
             # Cleanup files.
-            if model_fn:
-                self._model_data = open(model_fn,'rb').read()
-                os.remove(model_fn)
-            if query_fn and clean_query:
-                os.remove(query_fn)
+            if cleanup:
+                if model_fn:
+                    self._model_data = open(model_fn, 'rb').read()
+                    os.remove(model_fn)
+                if query_fn and clean_query:
+                    os.remove(query_fn)
                 
     def test(self, test_data, verbose=0):
         data = arff.ArffFile.load(test_data)
@@ -516,8 +554,8 @@ class Classifier(object):
         for result in self.predict(test_data, verbose=verbose):
             i += 1
             if verbose:
-                print i,result
-            row = data_itr.next()
+                print(i, result)
+            row = next(data_itr)
             total += 1
             correct += result.predicted == result.actual
         return correct/float(total)
@@ -526,35 +564,36 @@ class Test(unittest.TestCase):
     
     def test_arff(self):
     
-        data = arff.ArffFile.load('test/abalone-train.arff')
+        data = arff.ArffFile.load(os.path.join(BP, 'test/abalone-train.arff'))
         self.assertEqual(len(data.attributes), 9)
         
     def test_IBk(self):
         
         # Train a classifier.
+        print('Training IBk classifier...')
         c = Classifier(name='weka.classifiers.lazy.IBk', ckargs={'-K':1})
-        training_fn = 'test/abalone-train.arff'
-        c.train(training_fn, verbose=0)
+        training_fn = os.path.join(BP, 'test/abalone-train.arff')
+        c.train(training_fn, verbose=1)
         self.assertTrue(c._model_data)
         
         # Make a valid query.
-        query_fn = 'test/abalone-query.arff'
-        predictions = list(c.predict(query_fn, verbose=0))
-        self.assertEqual(predictions[0],
-            PredictionResult(actual=None, predicted=7, probability=None))
+        print('Using IBk classifier...')
+        query_fn = os.path.join(BP, 'test/abalone-query.arff')
+        predictions = list(c.predict(query_fn, verbose=1, cleanup=0))
+        pred0 = predictions[0]
+        print('pred0:', pred0)
+        pred1 = PredictionResult(actual=None, predicted=7, probability=None)
+        print('pred1:', pred1)
+        self.assertEqual(pred0, pred1)
             
         # Make a valid query.
-        try:
-            query_fn = 'test/abalone-query-bad.arff'
-            predictions = list(c.predict(query_fn, verbose=0))
-            self.assertTrue(0)
-        except PredictionError:
-            #print 'Invalid query threw exception as expected.'
-            self.assertTrue(1)
+        with self.assertRaises(PredictionError):
+            query_fn = os.path.join(BP, 'test/abalone-query-bad.arff')
+            predictions = list(c.predict(query_fn, verbose=1, cleanup=0))
             
         # Make a valid query manually.
         query = arff.ArffFile(relation='test', schema=[
-            ('Sex', ('M','F','I')),
+            ('Sex', ('M', 'F', 'I')),
             ('Length', 'numeric'),
             ('Diameter', 'numeric'),
             ('Height', 'numeric'),
@@ -564,7 +603,7 @@ class Test(unittest.TestCase):
             ('Shell weight', 'numeric'),
             ('Class_Rings', 'integer'),
         ])
-        query.append(['M',0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,'?'])
+        query.append(['M', 0.35, 0.265, 0.09, 0.2255, 0.0995, 0.0485, 0.07, '?'])
         data_str0 = """% 
 @relation test
 @attribute 'Sex' {F,I,M}
@@ -579,26 +618,26 @@ class Test(unittest.TestCase):
 @data
 M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
 """
-        data_str1 = query.write(format=DENSE)
-#        print data_str0
-#        print data_str1
+        data_str1 = query.write(fmt=DENSE)
+#        print(data_str0
+#        print(data_str1
         self.assertEqual(data_str0, data_str1)
-        predictions = list(c.predict(query, verbose=0))
+        predictions = list(c.predict(query, verbose=1, cleanup=0))
         self.assertEqual(predictions[0],
             PredictionResult(actual=None, predicted=7, probability=None))
         
         # Test pickling.
-        fn = 'test/IBk.pkl'
+        fn = os.path.join(BP, 'test/IBk.pkl')
         c.save(fn)
         c = Classifier.load(fn)
-        predictions = list(c.predict(query, verbose=0))
+        predictions = list(c.predict(query, verbose=1, cleanup=0))
         self.assertEqual(predictions[0],
             PredictionResult(actual=None, predicted=7, probability=None))
-        #print 'Pickle verified.'
+        #print('Pickle verified.')
         
         # Make a valid dict query manually.
-        query = arff.ArffFile(relation='test',schema=[
-            ('Sex', ('M','F','I')),
+        query = arff.ArffFile(relation='test', schema=[
+            ('Sex', ('M', 'F', 'I')),
             ('Length', 'numeric'),
             ('Diameter', 'numeric'),
             ('Height', 'numeric'),
@@ -609,30 +648,30 @@ M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
             ('Class_Rings', 'integer'),
         ])
         query.append({
-            'Sex':'M',
-            'Length':0.35,
-            'Diameter':0.265,
-            'Height':0.09,
-            'Whole weight':0.2255,
-            'Shucked weight':0.0995,
-            'Viscera weight':0.0485,
-            'Shell weight':0.07,
-            'Class_Rings':arff.MISSING,
+            'Sex': 'M',
+            'Length': 0.35,
+            'Diameter': 0.265,
+            'Height': 0.09,
+            'Whole weight': 0.2255,
+            'Shucked weight': 0.0995,
+            'Viscera weight': 0.0485,
+            'Shell weight': 0.07,
+            'Class_Rings': arff.MISSING,
         })
-        predictions = list(c.predict(query, verbose=0))
+        predictions = list(c.predict(query, verbose=1, cleanup=0))
         self.assertEqual(predictions[0],
             PredictionResult(actual=None, predicted=7, probability=None))
 
     def test_shortcut(self):
-        c = IBk(K=1)
+        c = IBk(K=1) # pylint: disable=undefined-variable
         
-        training_fn = 'test/abalone-train.arff'
-        c.train(training_fn, verbose=0)
+        training_fn = os.path.join(BP, 'test/abalone-train.arff')
+        c.train(training_fn, verbose=1)
         self.assertTrue(c._model_data)
         
         # Make a valid query.
-        query_fn = 'test/abalone-query.arff'
-        predictions = list(c.predict(query_fn, verbose=0))
+        query_fn = os.path.join(BP, 'test/abalone-query.arff')
+        predictions = list(c.predict(query_fn, verbose=1, cleanup=0))
         self.assertEqual(len(predictions), 1)
         self.assertEqual(predictions[0],
             PredictionResult(actual=None, predicted=7, probability=None))
@@ -642,12 +681,12 @@ M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
         Confirm updateable classifiers are used so that their model is in fact
         updated and not overwritten.
         """
-        c = IBk(K=1)
+        c = IBk(K=1) # pylint: disable=undefined-variable
         self.assertTrue('IBk' in UPDATEABLE_WEKA_CLASSIFIER_NAMES)
         
-        train_fn1 = 'test/updateable-train-1.arff'
-        train_fn2 = 'test/updateable-train-2.arff'
-        save_fn = 'test/IBk.updated.pkl'
+        train_fn1 = os.path.join(BP, 'test/updateable-train-1.arff')
+        train_fn2 = os.path.join(BP, 'test/updateable-train-2.arff')
+        save_fn = os.path.join(BP, 'test/IBk.updated.pkl')
         if os.path.isfile(save_fn):
             os.remove(save_fn)
         
@@ -656,12 +695,12 @@ M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
         
         # It should have a perfect accuracy when tested on the same file
         # it was trained with.
-        acc = c.test(train_fn1, verbose=0)
+        acc = c.test(train_fn1, verbose=1)
         self.assertEqual(acc, 1.0)
         
         # It should have horrible accuracy on a completely different data
         # file that it hasn't been trained on.
-        acc = c.test(train_fn2, verbose=0)
+        acc = c.test(train_fn2, verbose=1)
         self.assertEqual(acc, 0.0)
         pre_del_model = c._model_data
         
@@ -669,26 +708,32 @@ M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
         c.save(save_fn)
         del c
         
-        c = IBk.load(save_fn)
+        c = IBk.load(save_fn) # pylint: disable=undefined-variable
         self.assertTrue(c._model_data)
         self.assertEqual(c._model_data, pre_del_model)
         
         # Confirm the Weka model was persisted by confirming we still have
         # perfect accuracy on the initial training file.
-        acc = c.test(train_fn1, verbose=0)
+        acc = c.test(train_fn1, verbose=1)
         self.assertEqual(acc, 1.0)
         
         # Train the classifier on a completely different data set.
         c.train(train_fn2)
         
         # Confirm it has perfect accuracy on the new data set.
-        acc = c.test(train_fn2, verbose=0)
+        acc = c.test(train_fn2, verbose=1)
         self.assertEqual(acc, 1.0)
         
         # Confirm we still have perfect accuracy on the original data set.
-        acc = c.test(train_fn1, verbose=0)
+        acc = c.test(train_fn1, verbose=1)
         self.assertEqual(acc, 1.0)
+
+    def test_PredictionResult_cmp(self):
+        
+        a = PredictionResult(1, 2, 3)
+        b = PredictionResult(1, 2, 3)
+        
+        self.assertEqual(a, b)
 
 if __name__ == '__main__':
     unittest.main()
-    

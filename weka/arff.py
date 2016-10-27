@@ -30,6 +30,7 @@ Added options for parsing and copying only the schema.
 2012.11.4 CKS
 Added support for streaming and sparse data.
 """
+from __future__ import print_function
 
 import os
 import sys
@@ -38,7 +39,9 @@ import copy
 import unittest
 import tempfile
 from decimal import Decimal
-from StringIO import StringIO
+
+from six import StringIO
+from six import string_types as basestring # pylint: disable=redefined-builtin
 
 MISSING = '?'
 
@@ -46,7 +49,7 @@ def is_numeric(v):
     try:
         float(v)
         return True
-    except:
+    except (TypeError, ValueError):
         return False
 
 DENSE = 'dense'
@@ -88,8 +91,7 @@ class Value(object):
         return hash(self.value)
     
     def __cmp__(self, other):
-        if type(self) == type(other):
-            #return cmp((self.value, self.cls), (other.value, other.cls))
+        if isinstance(other, Value):
             return cmp(self.value, other.value)
         else:
             return NotImplemented
@@ -123,7 +125,6 @@ Str = String
 
 class Nominal(Value):
     c_type = TYPE_NOMINAL
-    pass
 Nom = Nominal
 
 TYPE_TO_CLASS = {
@@ -190,10 +191,10 @@ class ArffFile(object):
         
         # Load schema.
         if schema:
-            for name,data in schema:
+            for name, data in schema:
                 name = STRIP_QUOTES_REGEX.sub('', name)
                 self.attributes.append(name)
-                if type(data) in (tuple,list):
+                if isinstance(data, (tuple, list)):
                     self.attribute_types[name] = TYPE_NOMINAL
                     self.attribute_data[name] = set(data)
                 else:
@@ -239,7 +240,7 @@ class ArffFile(object):
     def __iter__(self):
         for d in self.data:
             named = dict(zip(
-                [re.sub('^[\'\"]|[\'\"]$', '', _) for _ in self.attributes],
+                [re.sub(r'^[\'\"]|[\'\"]$', '', _) for _ in self.attributes],
                 d))
             assert len(d) == len(self.attributes)
             assert len(d) == len(named)
@@ -336,11 +337,11 @@ class ArffFile(object):
         o.write(self.write())
         o.close()
 
-    def write_line(self, d, format=SPARSE):
+    def write_line(self, d, fmt=SPARSE):
         """
         Converts a single data line to a string.
         """
-        if format == DENSE:
+        if fmt == DENSE:
             #TODO:fix
             assert not isinstance(d, dict), NotImplemented
             line = []
@@ -353,17 +354,16 @@ class ArffFile(object):
                 elif at == TYPE_NOMINAL:
                     line.append(e)
                 else:
-                    raise Exception, \
-                        "Type " + at + " not supported for writing!"
+                    raise Exception("Type " + at + " not supported for writing!")
             s = ','.join(map(str, line))
             return s
-        elif format == SPARSE:
+        elif fmt == SPARSE:
             line = []
             
             # Convert flat row into dictionary.
             if isinstance(d, (list, tuple)):
                 d = dict(zip(self.attributes, d))
-                for k in d.iterkeys():
+                for k in d:
                     at = self.attribute_types.get(k)
                     if isinstance(d[k], Value):
                         continue
@@ -378,7 +378,7 @@ class ArffFile(object):
                     elif at == TYPE_NOMINAL:
                         d[k] = Nom(d[k])
                     else:
-                        raise Exception, 'Unknown type: %s' % at
+                        raise Exception('Unknown type: %s' % at)
                     
             for i, name in enumerate(self.attributes):
                 v = d.get(name)
@@ -395,9 +395,6 @@ class ArffFile(object):
                     
                 if v != MISSING and self.attribute_types[name] == TYPE_NOMINAL\
                 and str(v) not in map(str, self.attribute_data[name]):
-#                    print 'Skipping nominal attribute with unregistered value.'
-#                    print 'Nominal attribute %s is set to "%s" but only allows %s.' % (name, v, ', '.join(map(str, self.attribute_data[name])))
-#                    print [type(_) for _ in ([v]+list(self.attribute_data[name]))]
                     pass
                 else:
                     line.append('%i %s' % (i, v))
@@ -409,7 +406,7 @@ class ArffFile(object):
                 return
             return '{' + (', '.join(line)) + '}'
         else:
-            raise Exception, 'Uknown format: %s' % (format,)
+            raise Exception('Uknown format: %s' % (fmt,))
 
     def write_attributes(self, fout=None):
         close = False
@@ -419,47 +416,47 @@ class ArffFile(object):
         for a in self.attributes:
             at = self.attribute_types[a]
             if at == TYPE_INTEGER:
-                print>>fout, "@attribute " + self.esc(a) + " integer"
+                print("@attribute " + self.esc(a) + " integer", file=fout)
             elif at in (TYPE_NUMERIC, TYPE_REAL):
-                print>>fout, "@attribute " + self.esc(a) + " numeric"
+                print("@attribute " + self.esc(a) + " numeric", file=fout)
             elif at == TYPE_STRING:
-                print>>fout, "@attribute " + self.esc(a) + " string"
+                print("@attribute " + self.esc(a) + " string", file=fout)
             elif at == TYPE_NOMINAL:
                 nom_vals = [_ for _ in self.attribute_data[a] if _ != MISSING]
                 nom_vals = sorted(nom_vals)
-                print>>fout, "@attribute " + self.esc(a) + \
-                    " {" + ','.join(map(str, nom_vals)) + "}"
+                print("@attribute " + self.esc(a) + \
+                    " {" + ','.join(map(str, nom_vals)) + "}", file=fout)
             else:
-                raise Exception, "Type " + at + " not supported for writing!"
+                raise Exception("Type " + at + " not supported for writing!")
         if isinstance(fout, StringIO) and close:
             return fout.getvalue()
 
     def write(self,
         fout=None,
-        format=SPARSE,
+        fmt=SPARSE,
         schema_only=False,
         data_only=False):
         """
         Write an arff structure to a string.
         """
         assert not (schema_only and data_only), 'Make up your mind.'
-        assert format in FORMATS, \
+        assert fmt in FORMATS, \
             'Invalid format "%s". Should be one of: %s' \
-                % (format, ', '.join(FORMATS))
+                % (fmt, ', '.join(FORMATS))
         close = False
         if fout is None:
             close = True
             fout = StringIO()
         if not data_only:
-            print>>fout, '% ' + re.sub("\n", "\n% ", '\n'.join(self.comment))
-            print>>fout, "@relation " + self.relation
+            print('% ' + re.sub("\n", "\n% ", '\n'.join(self.comment)), file=fout)
+            print("@relation " + self.relation, file=fout)
             self.write_attributes(fout=fout)
         if not schema_only:
-            print>>fout, "@data"
+            print("@data", file=fout)
             for d in self.data:
-                line_str = self.write_line(d, format=format)
+                line_str = self.write_line(d, fmt=fmt)
                 if line_str:
-                    print>>fout, line_str
+                    print(line_str, file=fout)
         if isinstance(fout, StringIO) and close:
             return fout.getvalue()
 
@@ -467,7 +464,7 @@ class ArffFile(object):
         """
         Escape a string if it contains spaces.
         """
-        return ("\'" + s + "\'").replace("''","'")
+        return ("\'" + s + "\'").replace("''", "'")
 
     def define_attribute(self, name, atype, data=None):
         """
@@ -520,10 +517,10 @@ class ArffFile(object):
         elif atype == TYPE_STRING:
             self.define_attribute(name, TYPE_STRING)
         elif atype[0] == '{' and atype[-1] == '}':
-            values = [s.strip () for s in atype[1:-1].split(',')]
+            values = [s.strip() for s in atype[1:-1].split(',')]
             self.define_attribute(name, TYPE_NOMINAL, values)
         else:
-            print "Unsupported type " + atype + " for attribute " + name + "."
+            print("Unsupported type " + atype + " for attribute " + name + ".")
 
     def _parse_data(self, l):
         if isinstance(l, basestring):
@@ -535,7 +532,7 @@ class ArffFile(object):
                 parts = re.split(r'(?<!\\),', l[1:-1])
                 for part in parts:
                     index, value = re.findall(
-                        '(^[0-9]+)\s+(.*)$', part.strip())[0]
+                        r'(^[0-9]+)\s+(.*)$', part.strip())[0]
                     index = int(index)
                     if value[0] == value[-1] and value[0] in ('"', "'"):
                         # Strip quotes.
@@ -564,11 +561,11 @@ class ArffFile(object):
             l = [l[name] for name in self.attributes]
         else:
             # Otherwise, confirm list.
-            assert type(l) in (tuple,list)
+            assert isinstance(l, (tuple, list))
         if len(l) != len(self.attributes):
-            print ("Warning: line %d contains %i " + \
+            print(("Warning: line %d contains %i " + \
                    "values but it should contain %i values") \
-                % (self.lineno, len(l), len(self.attributes))
+                % (self.lineno, len(l), len(self.attributes)))
             return 
 
         datum = []
@@ -586,33 +583,32 @@ class ArffFile(object):
                 if v in self.attribute_data[n]:
                     datum.append(v)
                 else:
-                    raise Exception, \
-                        'Incorrect value %s for nominal attribute %s' % (v, n)
+                    raise Exception('Incorrect value %s for nominal attribute %s' % (v, n))
         if self.fout:
             # If we're streaming out data, then don't even bother saving it to
             # memory and just flush it out to disk instead.
             line_str = self.write_line(datum)
             if line_str:
-                print>>self.fout, line_str
+                print(line_str, file=self.fout)
             self.fout.flush()
         else:
             self.data.append(datum)
 
     def __print_warning(self, msg):
-        print ('Warning (line %d): ' % self.lineno) + msg
+        print(('Warning (line %d): ' % self.lineno) + msg)
 
     def dump(self):
         """Print an overview of the ARFF file."""
-        print "Relation " + self.relation
-        print "  With attributes"
+        print("Relation " + self.relation)
+        print("  With attributes")
         for n in self.attributes:
             if self.attribute_types[n] != TYPE_NOMINAL:
-                print "    %s of type %s" % (n, self.attribute_types[n])
+                print("    %s of type %s" % (n, self.attribute_types[n]))
             else:
-                print ("    " + n + " of type nominal with values " +
-                       ', '.join(self.attribute_data[n]))
+                print("    " + n + " of type nominal with values " +
+                    ', '.join(self.attribute_data[n]))
         for d in self.data:
-            print d
+            print(d)
     
     def set_class(self, name):
         assert name in self.attributes
@@ -648,7 +644,8 @@ class ArffFile(object):
                         if self.fout:
                             # Remove feature that violates the schema
                             # during streaming.
-                            if k in line: del line[k]
+                            if k in line:
+                                del line[k]
                         else:
                             self.attribute_types[k] = v.c_type
                             self.attributes.append(k)
@@ -658,9 +655,11 @@ class ArffFile(object):
                             # Remove feature that violates the schema
                             # during streaming.
                             if k not in self.attributes:
-                                if k in line: del line[k]
+                                if k in line:
+                                    del line[k]
                             elif v.value not in self.attribute_data[k]:
-                                if k in line: del line[k]
+                                if k in line:
+                                    del line[k]
                         else:
                             self.attribute_data.setdefault(k, set())
                             if v.value not in self.attribute_data[k]:
@@ -692,13 +691,9 @@ class ArffFile(object):
             if not schema_only:
                 # Append line to data set.
                 if self.fout:
-#                    print 'line:',line
-#                    for k in line.iterkeys():
-#                        print k, k in self.attribute_types
-#                    print '-'*80
                     line_str = self.write_line(line)
                     if line_str:
-                        print>>self.fout, line_str
+                        print(line_str, file=self.fout)
                 else:
                     self.data.append(line)
         else:
@@ -756,7 +751,7 @@ class Test(unittest.TestCase):
         self.assertEqual(s1, s0)
         
         a2 = ArffFile.parse(s1)
-        for i,line in enumerate(a2.data):
+        for i, line in enumerate(a2.data):
             self.assertEqual(line, a1.data[i])
         s2 = a2.write()
         self.assertEqual(s1, s2)
@@ -778,7 +773,7 @@ class Test(unittest.TestCase):
             self.assertEqual(len(a3.data), 0)
         
         fn = a3.close_stream()
-        s3 = open(fn,'r').read()
+        s3 = open(fn, 'r').read()
         #print s3
         os.remove(fn)
         # Note the rows that have features violating the schema are

@@ -5,3 +5,4 @@
 /.settings
 /weka.egg-info
 /dist
+/.tox/

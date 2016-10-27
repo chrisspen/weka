@@ -3,17 +3,8 @@
 import os
 from distutils.core import setup, Command
 from setuptools import find_packages
-from weka import classifiers as weka
 
-class TestCommand(Command):
-    description = "Runs unittests."
-    user_options = []
-    def initialize_options(self):
-        pass
-    def finalize_options(self):
-        pass
-    def run(self):
-        os.system('cd weka; python ./classifiers.py')
+import weka
 
 setup(name='weka',
     version=weka.__version__,
@@ -23,16 +14,18 @@ setup(name='weka',
     url='https://github.com/chrisspen/weka',
     license='LGPL License',
     packages=find_packages(),
+    # https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers = [
         "Programming Language :: Python",
-        "Development Status :: 3 - Alpha",
+        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3.3",
+        "Programming Language :: Python :: 3.4",
+        "Programming Language :: Python :: 3.5",
+        "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)",
         "Operating System :: OS Independent",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Text Processing :: General",
     ],
     platforms=['OS Independent'],
-    cmdclass={
-        'test': TestCommand,
-    },
 )
