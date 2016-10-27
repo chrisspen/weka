@@ -75,6 +75,9 @@ NUMERIC_TYPES = (
 
 STRIP_QUOTES_REGEX = re.compile('^[\'\"]|[\'\"]$')
 
+def cmp(a, b): # pylint: disable=redefined-builtin
+    return (a > b) - (a < b)
+
 class Value(object):
     """
     Base helper class for tagging units of data with an explicit schema type.
@@ -89,6 +92,12 @@ class Value(object):
     def __hash__(self):
         #return hash((self.value, self.cls))
         return hash(self.value)
+    
+    def __eq__(self, other):
+        if isinstance(other, Value):
+            return self.value == other.value
+        else:
+            return NotImplemented
     
     def __cmp__(self, other):
         if isinstance(other, Value):

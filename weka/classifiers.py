@@ -21,6 +21,7 @@ import sys
 import tempfile
 import unittest
 
+#https://pythonhosted.org/six/
 from six.moves import cPickle as pickle
 from six import string_types as basestring # pylint: disable=redefined-builtin
 from six import iteritems
@@ -87,6 +88,9 @@ WEKA_CLASSIFIERS = [
 'weka.classifiers.trees.RandomForest',
 'weka.classifiers.trees.REPTree',
 ]
+
+def cmp(a, b): # pylint: disable=redefined-builtin
+    return (a > b) - (a < b)
 
 class _Helper(object):
     

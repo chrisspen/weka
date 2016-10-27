@@ -3,6 +3,7 @@ python:
 -   3.5
 install:
 -   sudo apt-get install --yes weka
+-   sudo ls -lah /usr/share/java/weka*
 -   pip install tox pylint
 script:
 -   ./pep8.sh
