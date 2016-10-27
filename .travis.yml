@@ -2,7 +2,7 @@ language: python
 python:
 -   3.5
 install:
--   sudo apt-get install --yes weka
+-   sudo apt-get install --yes weka libsvm-java
 -   sudo ls -lah /usr/share/java/weka*
 -   pip install tox pylint
 script:
