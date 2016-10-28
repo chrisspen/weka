@@ -1,8 +1,10 @@
 Weka - Python wrapper for Weka classifiers
 =======================================================================
 
+[<img src="https://secure.travis-ci.org/chrisspen/weka.png?branch=master" alt="Build Status">](https://travis-ci.org/chrisspen/weka)
+
 Overview
-========
+--------
 
 Provides a convenient wrapper for calling Weka classifiers from Python.
 
