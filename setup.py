@@ -6,6 +6,18 @@ from setuptools import find_packages
 
 import weka
 
+CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
+
+def get_reqs(*fns):
+    lst = []
+    for fn in fns:
+        for package in open(os.path.join(CURRENT_DIR, fn)).readlines():
+            package = package.strip()
+            if not package:
+                continue
+            lst.append(package.strip())
+    return lst
+
 setup(name='weka',
     version=weka.__version__,
     description='A Python wrapper for the Weka data mining library.',
@@ -28,4 +40,5 @@ setup(name='weka',
         "Topic :: Text Processing :: General",
     ],
     platforms=['OS Independent'],
+    install_requires=get_reqs('pip-requirements.txt'),
 )
