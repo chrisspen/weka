@@ -1,7 +1,7 @@
 Weka - Python wrapper for Weka classifiers
-=======================================================================
+==========================================
 
-[<img src="https://secure.travis-ci.org/chrisspen/weka.png?branch=master" alt="Build Status">](https://travis-ci.org/chrisspen/weka)
+[![](https://img.shields.io/pypi/v/weka.svg)](https://pypi.python.org/pypi/weka) [![Build Status](https://img.shields.io/travis/chrisspen/weka.svg?branch=master)](https://travis-ci.org/chrisspen/weka) [![](https://pyup.io/repos/github/chrisspen/weka/shield.svg)](https://pyup.io/repos/github/chrisspen/weka)
 
 Overview
 --------
