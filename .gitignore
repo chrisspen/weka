@@ -6,3 +6,5 @@
 /weka.egg-info
 /dist
 /.tox/
+*.out
+*.geany
