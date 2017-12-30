@@ -3,7 +3,7 @@ python:
 -   3.5
 install:
 -   sudo apt-get install --yes weka libsvm-java
--   pip install tox pylint
+-   pip install tox pylint==1.6.5
 script:
 -   ./pep8.sh
 -   tox
