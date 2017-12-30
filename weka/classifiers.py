@@ -243,8 +243,7 @@ class Classifier(object):
         assert os.path.isfile(fn), 'File %s does not exist.' % (fn,)
         if compress:
             return pickle.load(gzip.open(fn, 'rb'))
-        else:
-            return pickle.load(open(fn, 'rb'))
+        return pickle.load(open(fn, 'rb'))
 
     @classmethod
     def load_raw(cls, model_fn, schema, *args, **kwargs):

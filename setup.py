@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
-from distutils.core import setup, Command
-from setuptools import find_packages
+
+from setuptools import setup, find_packages
 
 import weka
 

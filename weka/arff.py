@@ -41,10 +41,10 @@ import tempfile
 from datetime import date, datetime
 from decimal import Decimal
 
-import dateutil.parser
-
 from six import StringIO
 from six import string_types as basestring # pylint: disable=redefined-builtin
+
+import dateutil.parser
 
 MISSING = '?'
 
@@ -119,14 +119,12 @@ class Value(object):
     def __eq__(self, other):
         if isinstance(other, Value):
             return self.value == other.value
-        else:
-            return NotImplemented
+        return NotImplemented
     
     def __cmp__(self, other):
         if isinstance(other, Value):
             return cmp(self.value, other.value)
-        else:
-            return NotImplemented
+        return NotImplemented
     
     def __repr__(self):
         return repr(self.value)
@@ -143,8 +141,7 @@ class Integer(Value):
             return Integer(v=self.value + other.value, cls=self.cls)
         elif isinstance(other, (int, float, bool)):
             return Integer(v=self.value + other, cls=self.cls)
-        else:
-            return NotImplemented
+        return NotImplemented
         
     def __iadd__(self, other):
         if isinstance(other, Integer):
@@ -153,8 +150,7 @@ class Integer(Value):
         elif isinstance(other, (int, float, bool)):
             self.value += other
             return self
-        else:
-            return NotImplemented
+        return NotImplemented
             
 Int = Integer
 
@@ -171,8 +167,7 @@ class Numeric(Value):
             return Numeric(v=self.value + other.value, cls=self.cls)
         elif isinstance(other, (int, float, bool)):
             return Numeric(v=self.value + other, cls=self.cls)
-        else:
-            return NotImplemented
+        return NotImplemented
 
     def __iadd__(self, other):
         if isinstance(other, Numeric):
@@ -181,24 +176,21 @@ class Numeric(Value):
         elif isinstance(other, (int, float, bool)):
             self.value += other
             return self
-        else:
-            return NotImplemented
+        return NotImplemented
         
     def __div__(self, other):
         if isinstance(other, Numeric):
             return Numeric(v=self.value / other.value, cls=self.cls)
         elif isinstance(other, (int, float, bool)):
             return Numeric(v=self.value / other, cls=self.cls)
-        else:
-            return NotImplemented
+        return NotImplemented
         
     def __truediv__(self, other):
         if isinstance(other, Numeric):
             return Numeric(v=self.value / other.value, cls=self.cls)
         elif isinstance(other, (int, float, bool)):
             return Numeric(v=self.value / other, cls=self.cls)
-        else:
-            return NotImplemented
+        return NotImplemented
 
     def __idiv__(self, other):
         if isinstance(other, Numeric):
@@ -207,8 +199,7 @@ class Numeric(Value):
         elif isinstance(other, (int, float, bool)):
             self.value /= other
             return self
-        else:
-            return NotImplemented
+        return NotImplemented
 
     def __itruediv__(self, other):
         if isinstance(other, Numeric):
@@ -217,8 +208,7 @@ class Numeric(Value):
         elif isinstance(other, (int, float, bool)):
             self.value /= other
             return self
-        else:
-            return NotImplemented
+        return NotImplemented
 
 Num = Numeric
 
@@ -535,7 +525,7 @@ class ArffFile(object):
             if len(line) == 1 and MISSING in line[-1]:
                 # Skip lines with nothing other than a missing class.
                 return
-            elif not len(line):
+            elif not line:
                 # Don't write blank lines.
                 return
             return '{' + (', '.join(line)) + '}'
