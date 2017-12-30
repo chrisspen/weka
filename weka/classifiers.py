@@ -418,7 +418,8 @@ class Classifier(object):
                 assert os.path.isfile(query_data)
                 query_fn = query_data
             else:
-                assert isinstance(query_data, arff.ArffFile)
+                #assert isinstance(query_data, arff.ArffFile) #TODO: doesn't work in Python 3.*?
+                assert type(query_data).__name__ == 'ArffFile', 'Must be of type ArffFile, not "%s"' % type(query_data).__name__
                 fd, query_fn = tempfile.mkstemp(suffix='.arff')
                 if verbose:
                     print('writing', query_fn)
@@ -595,7 +596,7 @@ class EnsembleClassifier(object):
     def load(cls, fn, compress=True, *args, **kwargs):
         raise NotImplementedError
     
-    def get_best(self):
+    def get_training_best(self):
         results = list(self.training_results.items())
         results = sorted(results, key=lambda o: o[1])
         print('name: <name> <coef> <inv mae>')
@@ -605,7 +606,7 @@ class EnsembleClassifier(object):
             (coef, inv_mae) = data
             print('name:', name, (coef, inv_mae))
     
-    def get_errors(self):
+    def get_training_errors(self):
         results = list(self.training_results.items())
         results = sorted(results)
         for name, data in results:
@@ -645,21 +646,27 @@ class EnsembleClassifier(object):
                 traceback.print_exc()
                 self.training_results[name] = traceback.format_exc()
 
-    def predict(self, query_data, **kwargs):
-        verbose = kwargs.get('verbose', False)
-        assert self.training_results, 'Classifier must be trained first!'
-        
+    def get_best_predictors(self, tolerance, verbose=False):
         best_coef = -1e9999999999
         best_names = set()
-        for name, data in self.training_results.items():
+        for name, data in sorted(self.training_results.items(), key=lambda o: o[1][0], reverse=True):
             if isinstance(data, basestring):
                 continue
             (coef, inv_mae) = data
+            if verbose:
+                print('name:', name, coef, inv_mae)
             if coef > best_coef:
                 best_coef = coef
                 best_names = set([name])
-            elif coef == best_coef:
+            elif (coef + tolerance) >= best_coef:
                 best_names.add(name)
+        return best_names
+
+    def predict(self, query_data, tolerance=0, **kwargs):
+        verbose = kwargs.get('verbose', False)
+        assert self.training_results, 'Classifier must be trained first!'
+        
+        best_names = self.get_best_predictors(tolerance=tolerance)
 
         total = len(best_names)
         i = 0

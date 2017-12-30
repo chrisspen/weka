@@ -14,7 +14,33 @@ class Test(unittest.TestCase):
     
         data = arff.ArffFile.load(os.path.join(BP, 'fixtures/abalone-train.arff'))
         self.assertEqual(len(data.attributes), 9)
+    
+    def test_numeric(self):
         
+        n1 = Num(1.23)
+        n2 = Num(4.56)
+        self.assertEqual(n1.value, 1.23)
+        self.assertEqual(n2.value, 4.56)
+        
+        n3 = n1 + n2
+        self.assertEqual(n3.value, n1.value + n2.value)
+        self.assertNotEqual(n3, n1)
+        self.assertNotEqual(n3, n2)
+        
+        n3 += 1
+        self.assertEqual(n3.value, n1.value + n2.value + 1)
+        
+        s = sum([n1, n2, n3], Num(0))
+        print(s)
+        self.assertTrue(isinstance(s, Num))
+        self.assertEqual(s.value, (n1 + n2 + n3).value)
+        
+        n4 = n1 / 10
+        self.assertEqual(n4.value, 0.123)
+        
+        n4 /= 10
+        self.assertEqual(n4.value, 0.0123)
+    
     def test_IBk(self):
         
         # Train a classifier.
@@ -190,12 +216,12 @@ M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
 @attribute 'Diameter' numeric
 @attribute 'Length' numeric
 @attribute 'Sex' {F,M}
-@attribute 'Timestamp' date "yyyy-MM-dd'T'HH:mm:ss"
+@attribute 'Timestamp' date "yyyy-MM-dd HH:mm:ss"
 @attribute 'Whole_weight' numeric
 @attribute 'Class_Rings' integer
 @data
-{0 0.286, 1 0.35, 2 M, 3 2017-12-01'T'00:00:00, 5 15}
-{0 0.86, 2 F, 3 2017-12-27'T'00:00:00, 4 0.98, 5 7}
+{0 0.286, 1 0.35, 2 M, 3 "2017-12-01 00:00:00", 5 15}
+{0 0.86, 2 F, 3 "2017-12-27 00:00:00", 4 0.98, 5 7}
 """
         
         rows = [
@@ -269,12 +295,12 @@ M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
 @attribute 'Diameter' numeric
 @attribute 'Length' numeric
 @attribute 'Sex' {F,M}
-@attribute 'Timestamp' date "yyyy-MM-dd'T'HH:mm:ss"
+@attribute 'Timestamp' date "yyyy-MM-dd HH:mm:ss"
 @attribute 'Whole_weight' numeric
 @attribute 'Class_Rings' integer
 @data
-{0 0.286, 1 0.35, 2 M, 3 2017-12-01'T'00:00:00, 5 15}
-{0 0.86, 2 F, 3 2017-12-27'T'00:00:00, 4 0.98, 5 7}
+{0 0.286, 1 0.35, 2 M, 3 "2017-12-01 00:00:00", 5 15}
+{0 0.86, 2 F, 3 "2017-12-27 00:00:00", 4 0.98, 5 7}
 {0 0.286, 1 0.35, 5 15}
 {0 0.86, 4 0.98, 5 7}
 """

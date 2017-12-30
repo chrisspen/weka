@@ -137,6 +137,25 @@ class Integer(Value):
         if v != MISSING:
             v = int(v)
         super(Integer, self).__init__(v, *args, **kwargs)
+        
+    def __add__(self, other):
+        if isinstance(other, Integer):
+            return Integer(v=self.value + other.value, cls=self.cls)
+        elif isinstance(other, (int, float, bool)):
+            return Integer(v=self.value + other, cls=self.cls)
+        else:
+            return NotImplemented
+        
+    def __iadd__(self, other):
+        if isinstance(other, Integer):
+            self.value += other.value
+            return self
+        elif isinstance(other, (int, float, bool)):
+            self.value += other
+            return self
+        else:
+            return NotImplemented
+            
 Int = Integer
 
 class Numeric(Value):
@@ -146,6 +165,61 @@ class Numeric(Value):
         if v != MISSING:
             v = float(v)
         super(Numeric, self).__init__(v, *args, **kwargs)
+        
+    def __add__(self, other):
+        if isinstance(other, Numeric):
+            return Numeric(v=self.value + other.value, cls=self.cls)
+        elif isinstance(other, (int, float, bool)):
+            return Numeric(v=self.value + other, cls=self.cls)
+        else:
+            return NotImplemented
+
+    def __iadd__(self, other):
+        if isinstance(other, Numeric):
+            self.value += other.value
+            return self
+        elif isinstance(other, (int, float, bool)):
+            self.value += other
+            return self
+        else:
+            return NotImplemented
+        
+    def __div__(self, other):
+        if isinstance(other, Numeric):
+            return Numeric(v=self.value / other.value, cls=self.cls)
+        elif isinstance(other, (int, float, bool)):
+            return Numeric(v=self.value / other, cls=self.cls)
+        else:
+            return NotImplemented
+        
+    def __truediv__(self, other):
+        if isinstance(other, Numeric):
+            return Numeric(v=self.value / other.value, cls=self.cls)
+        elif isinstance(other, (int, float, bool)):
+            return Numeric(v=self.value / other, cls=self.cls)
+        else:
+            return NotImplemented
+
+    def __idiv__(self, other):
+        if isinstance(other, Numeric):
+            self.value /= other.value
+            return self
+        elif isinstance(other, (int, float, bool)):
+            self.value /= other
+            return self
+        else:
+            return NotImplemented
+
+    def __itruediv__(self, other):
+        if isinstance(other, Numeric):
+            self.value /= other.value
+            return self
+        elif isinstance(other, (int, float, bool)):
+            self.value /= other
+            return self
+        else:
+            return NotImplemented
+
 Num = Numeric
 
 class String(Value):
@@ -691,7 +765,7 @@ class ArffFile(object):
         if isinstance(line, dict):
             # Validate line types against schema.
             if update_schema:
-                for k, v in line.items():
+                for k, v in list(line.items()):
                     prior_type = self.attribute_types.get(k, v.c_type if isinstance(v, Value) else None)
                     if not isinstance(v, Value):
                         if v == MISSING:
