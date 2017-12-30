@@ -26,8 +26,13 @@ setup(name='weka',
     url='https://github.com/chrisspen/weka',
     license='LGPL License',
     packages=find_packages(),
+    package_data={
+        'weka': [
+            'fixtures/*'
+        ],
+    },
     # https://pypi.python.org/pypi?%3Aaction=list_classifiers
-    classifiers = [
+    classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3.3",

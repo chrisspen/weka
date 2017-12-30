@@ -1,2 +1,2 @@
 #!/bin/bash
-pylint --rcfile=pylint.rc weka
+pylint --rcfile=pylint.rc weka setup.py

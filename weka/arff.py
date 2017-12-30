@@ -38,7 +38,10 @@ import re
 import copy
 import unittest
 import tempfile
+from datetime import date, datetime
 from decimal import Decimal
+
+import dateutil.parser
 
 from six import StringIO
 from six import string_types as basestring # pylint: disable=redefined-builtin
@@ -61,11 +64,13 @@ TYPE_NUMERIC = 'numeric' # float or integer
 TYPE_REAL = 'real'
 TYPE_STRING = 'string'
 TYPE_NOMINAL = 'nominal'
+TYPE_DATE = 'date'
 TYPES = (
     TYPE_INTEGER,
     TYPE_NUMERIC,
     TYPE_STRING,
     TYPE_NOMINAL,
+    TYPE_DATE,
 )
 NUMERIC_TYPES = (
     TYPE_INTEGER,
@@ -74,6 +79,24 @@ NUMERIC_TYPES = (
 )
 
 STRIP_QUOTES_REGEX = re.compile('^[\'\"]|[\'\"]$')
+
+#DEFAULT_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss" # Weka docs say this is the default, but using this causes Weka to throw an java.io.IOException: unparseable date
+DEFAULT_DATE_FORMAT = "yyyy-MM-dd HH:mm:ss"
+#DEFAULT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+def convert_weka_to_py_date_pattern(p):
+    """
+    Converts the date format pattern used by Weka to the date format pattern used by Python's datetime.strftime().
+    """
+    # https://docs.python.org/2/library/datetime.html#strftime-strptime-behavior
+    # https://www.cs.waikato.ac.nz/ml/weka/arff.html
+    p = p.replace('yyyy', r'%Y')
+    p = p.replace('MM', r'%m')
+    p = p.replace('dd', r'%d')
+    p = p.replace('HH', r'%H')
+    p = p.replace('mm', r'%M')
+    p = p.replace('ss', r'%S')
+    return p
 
 def cmp(a, b): # pylint: disable=redefined-builtin
     return (a > b) - (a < b)
@@ -136,12 +159,17 @@ class Nominal(Value):
     c_type = TYPE_NOMINAL
 Nom = Nominal
 
+class Date(Value):
+    c_type = TYPE_DATE
+Dt = Date
+
 TYPE_TO_CLASS = {
     TYPE_INTEGER: Integer,
     TYPE_NUMERIC: Numeric,
     TYPE_STRING: String,
     TYPE_NOMINAL: Nominal,
     TYPE_REAL: Numeric,
+    TYPE_DATE: Date,
 }
 
 def wrap_value(v):
@@ -157,6 +185,10 @@ def wrap_value(v):
         pass
     try:
         return Int(v)
+    except ValueError:
+        pass
+    try:
+        return Date(v)
     except ValueError:
         pass
 
@@ -245,6 +277,9 @@ class ArffFile(object):
                     'Predicted value "%s" but only values %s are allowed.' \
                         % (cls_value, ', '.join(self.attribute_data[name]))
             return cls_value
+    
+    def __len__(self):
+        return len(self.data)
     
     def __iter__(self):
         for d in self.data:
@@ -350,6 +385,12 @@ class ArffFile(object):
         """
         Converts a single data line to a string.
         """
+        
+        def smart_quote(s):
+            if isinstance(s, basestring) and ' ' in s and s[0] != '"':
+                s = '"%s"' % s
+            return s
+        
         if fmt == DENSE:
             #TODO:fix
             assert not isinstance(d, dict), NotImplemented
@@ -386,27 +427,37 @@ class ArffFile(object):
                         d[k] = Int(d[k])
                     elif at == TYPE_NOMINAL:
                         d[k] = Nom(d[k])
+                    elif at == TYPE_DATE:
+                        d[k] = Date(d[k])
                     else:
                         raise Exception('Unknown type: %s' % at)
-                    
+
             for i, name in enumerate(self.attributes):
                 v = d.get(name)
                 if v is None:
 #                    print 'Skipping attribute with None value:', name
                     continue
-                elif v == MISSING or (isinstance(v, Value) \
-                and v.value == MISSING):
+                elif v == MISSING or (isinstance(v, Value) and v.value == MISSING):
                     v = MISSING
                 elif isinstance(v, String):
                     v = '"%s"' % v.value
+                elif isinstance(v, Date):
+                    date_format = self.attribute_data.get(name, DEFAULT_DATE_FORMAT)
+                    date_format = convert_weka_to_py_date_pattern(date_format)
+                    if isinstance(v.value, basestring):
+                        _value = dateutil.parser.parse(v.value)
+                    else:
+                        assert isinstance(v.value, (date, datetime))
+                        _value = v.value
+                    v.value = v = _value.strftime(date_format)
                 elif isinstance(v, Value):
                     v = v.value
-                    
-                if v != MISSING and self.attribute_types[name] == TYPE_NOMINAL\
-                and str(v) not in map(str, self.attribute_data[name]):
+
+                if v != MISSING and self.attribute_types[name] == TYPE_NOMINAL and str(v) not in map(str, self.attribute_data[name]):
                     pass
                 else:
-                    line.append('%i %s' % (i, v))
+                    line.append('%i %s' % (i, smart_quote(v)))
+
             if len(line) == 1 and MISSING in line[-1]:
                 # Skip lines with nothing other than a missing class.
                 return
@@ -433,8 +484,10 @@ class ArffFile(object):
             elif at == TYPE_NOMINAL:
                 nom_vals = [_ for _ in self.attribute_data[a] if _ != MISSING]
                 nom_vals = sorted(nom_vals)
-                print("@attribute " + self.esc(a) + \
-                    " {" + ','.join(map(str, nom_vals)) + "}", file=fout)
+                print("@attribute " + self.esc(a) + " {" + ','.join(map(str, nom_vals)) + "}", file=fout)
+            elif at == TYPE_DATE:
+                # https://weka.wikispaces.com/ARFF+(stable+version)#Examples-The%20@attribute%20Declarations-Date%20attributes
+                print('@attribute %s date "%s"' % (self.esc(a), self.attribute_data.get(a, DEFAULT_DATE_FORMAT)), file=fout)
             else:
                 raise Exception("Type " + at + " not supported for writing!")
         if isinstance(fout, StringIO) and close:
@@ -449,9 +502,7 @@ class ArffFile(object):
         Write an arff structure to a string.
         """
         assert not (schema_only and data_only), 'Make up your mind.'
-        assert fmt in FORMATS, \
-            'Invalid format "%s". Should be one of: %s' \
-                % (fmt, ', '.join(FORMATS))
+        assert fmt in FORMATS, 'Invalid format "%s". Should be one of: %s' % (fmt, ', '.join(FORMATS))
         close = False
         if fout is None:
             close = True
@@ -477,14 +528,12 @@ class ArffFile(object):
 
     def define_attribute(self, name, atype, data=None):
         """
-        Define a new attribute. atype has to be one
-        of 'integer', 'real', 'numeric', 'string', and 'nominal'.
+        Define a new attribute. atype has to be one of 'integer', 'real', 'numeric', 'string', 'date' or 'nominal'.
         For nominal attributes, pass the possible values as data.
+        For date attributes, pass the format as data.
         """
         self.attributes.append(name)
-        assert atype in TYPES, \
-            "Unknown type '%s'. Must be one of: %s" % \
-            (atype, ', '.join(TYPES),)
+        assert atype in TYPES, "Unknown type '%s'. Must be one of: %s" % (atype, ', '.join(TYPES),)
         self.attribute_types[name] = atype
         self.attribute_data[name] = data
 
@@ -513,8 +562,7 @@ class ArffFile(object):
         self.relation = l[1]
 
     def __parse_attribute(self, l):
-        p = re.compile(
-            r'[a-zA-Z_][a-zA-Z0-9_\-\[\]]*|\{[^\}]*\}|\'[^\']+\'|\"[^\"]+\"')
+        p = re.compile(r'[a-zA-Z_][a-zA-Z0-9_\-\[\]]*|\{[^\}]*\}|\'[^\']+\'|\"[^\"]+\"')
         l = [s.strip() for s in p.findall(l)]
         name = l[1]
         name = STRIP_QUOTES_REGEX.sub('', name)
@@ -525,11 +573,16 @@ class ArffFile(object):
             self.define_attribute(name, TYPE_NUMERIC)
         elif atype == TYPE_STRING:
             self.define_attribute(name, TYPE_STRING)
+        elif atype == TYPE_DATE:
+            data = None
+            if len(l) >= 4:
+                data = STRIP_QUOTES_REGEX.sub('', l[3])
+            self.define_attribute(name, TYPE_DATE, data=data)
         elif atype[0] == '{' and atype[-1] == '}':
             values = [s.strip() for s in atype[1:-1].split(',')]
             self.define_attribute(name, TYPE_NOMINAL, values)
         else:
-            print("Unsupported type " + atype + " for attribute " + name + ".")
+            raise NotImplementedError("Unsupported type " + atype + " for attribute " + name + ".")
 
     def _parse_data(self, l):
         if isinstance(l, basestring):
@@ -540,13 +593,12 @@ class ArffFile(object):
                 dline = {}
                 parts = re.split(r'(?<!\\),', l[1:-1])
                 for part in parts:
-                    index, value = re.findall(
-                        r'(^[0-9]+)\s+(.*)$', part.strip())[0]
+                    index, value = re.findall(r'(^[0-9]+)\s+(.*)$', part.strip())[0]
                     index = int(index)
                     if value[0] == value[-1] and value[0] in ('"', "'"):
                         # Strip quotes.
                         value = value[1:-1]
-                    # TODO:0 or 1-indexed? Weka uses 0-indexing?!
+                    # TODO:0 or 1-indexed? Weka uses 0-indexing?
                     #name = self.attributes[index-1]
                     name = self.attributes[index]
                     ValueClass = TYPE_TO_CLASS[self.attribute_types[name]]
@@ -572,9 +624,7 @@ class ArffFile(object):
             # Otherwise, confirm list.
             assert isinstance(l, (tuple, list))
         if len(l) != len(self.attributes):
-            print(("Warning: line %d contains %i " + \
-                   "values but it should contain %i values") \
-                % (self.lineno, len(l), len(self.attributes)))
+            print("Warning: line %d contains %i values but it should contain %i values" % (self.lineno, len(l), len(self.attributes)))
             return 
 
         datum = []
@@ -614,8 +664,7 @@ class ArffFile(object):
             if self.attribute_types[n] != TYPE_NOMINAL:
                 print("    %s of type %s" % (n, self.attribute_types[n]))
             else:
-                print("    " + n + " of type nominal with values " +
-                    ', '.join(self.attribute_data[n]))
+                print("    " + n + " of type nominal with values " + ', '.join(self.attribute_data[n]))
         for d in self.data:
             print(d)
     
@@ -631,14 +680,19 @@ class ArffFile(object):
         self.attribute_data[name] = set(self.attribute_data[name])
         self.attribute_data[name].update(values)
     
+    def alphabetize_attributes(self):
+        """
+        Orders attributes names alphabetically, except for the class attribute, which is kept last.
+        """
+        self.attributes.sort(key=lambda name: (name == self.class_attr_name, name))
+    
     def append(self, line, schema_only=False, update_schema=True):
         schema_change = False
         if isinstance(line, dict):
             # Validate line types against schema.
             if update_schema:
                 for k, v in line.items():
-                    prior_type = self.attribute_types.get(k,
-                        v.c_type if isinstance(v, Value) else None)
+                    prior_type = self.attribute_types.get(k, v.c_type if isinstance(v, Value) else None)
                     if not isinstance(v, Value):
                         if v == MISSING:
                             v = Str(v)
@@ -646,9 +700,7 @@ class ArffFile(object):
                             v = TYPE_TO_CLASS[prior_type](v)
                     if v.value != MISSING:
                         assert prior_type == v.c_type, \
-                            ('Attempting to set attribute %s to type %s but ' + \
-                             'it is already defined as type %s.') \
-                                % (k, prior_type, v.c_type)
+                            ('Attempting to set attribute %s to type %s but it is already defined as type %s.') % (k, prior_type, v.c_type)
                     if k not in self.attribute_types:
                         if self.fout:
                             # Remove feature that violates the schema
@@ -679,9 +731,7 @@ class ArffFile(object):
                             self.class_attr_name = k
                         else:
                             assert self.class_attr_name == k, \
-                                ('Attempting to set class to "%s" when it has ' + \
-                                'already been set to "%s"') \
-                                    % (k, self.class_attr_name)
+                                ('Attempting to set class to "%s" when it has already been set to "%s"') % (k, self.class_attr_name)
                                     
                     # Ensure the class attribute is the last one listed,
                     # as that's assumed to be the class unless otherwise specified.
@@ -693,9 +743,7 @@ class ArffFile(object):
                             pass
                     
                 if schema_change:
-                    assert not self.fout, \
-                        'Attempting to add data that doesn\'t match ' + \
-                        'the schema while streaming.'
+                    assert not self.fout, 'Attempting to add data that doesn\'t match the schema while streaming.'
                     
             if not schema_only:
                 # Append line to data set.
@@ -708,98 +756,3 @@ class ArffFile(object):
         else:
             assert len(line) == len(self.attributes)
             self._parse_data(line)
-
-class Test(unittest.TestCase):
-    
-    def test_sparse_stream(self):
-        
-        s0 = """% 
-@relation test-abalone
-@attribute 'Diameter' numeric
-@attribute 'Length' numeric
-@attribute 'Sex' {F,M}
-@attribute 'Whole_weight' numeric
-@attribute 'Class_Rings' integer
-@data
-{0 0.286, 1 0.35, 2 M, 4 15}
-{0 0.86, 2 F, 3 0.98, 4 7}
-"""
-        
-        rows = [
-            dict(
-                Sex=Nom('M'),
-                Length=Num(0.35),
-                Diameter=Num(0.286),
-                Class_Rings=Int(15, cls=True)),
-            dict(
-                Sex=Nom('F'),
-                Diameter=Num(0.86),
-                Whole_weight=Num(0.98),
-                Class_Rings=Int(7, cls=True)),
-        ]
-        rows_extra = [
-            dict(
-                Sex=Nom('N'),
-                Length=Num(0.35),
-                Diameter=Num(0.286),
-                Class_Rings=Int(15, cls=True)),
-            dict(
-                Sex=Nom('B'),
-                Diameter=Num(0.86),
-                Whole_weight=Num(0.98),
-                Class_Rings=Int(7, cls=True)),
-        ]
-        
-        a1 = ArffFile(relation='test-abalone')
-        for row in rows:
-            a1.append(row)
-        self.assertEqual(a1.class_attr_name, 'Class_Rings')
-        s1 = a1.write()
-#        print s0
-#        print s1
-        self.assertEqual(s1, s0)
-        
-        a2 = ArffFile.parse(s1)
-        for i, line in enumerate(a2.data):
-            self.assertEqual(line, a1.data[i])
-        s2 = a2.write()
-        self.assertEqual(s1, s2)
-        
-        a3 = ArffFile(relation='test-abalone')
-        self.assertEqual(len(a3.data), 0)
-        #a3.open_stream(class_attr_name='Class_Rings')
-        
-        # When streaming, you have to provide your schema ahead of time,
-        # since otherwise we'd have to update the indexes on all files
-        # previously written to the file.
-        for row in rows:
-            a3.append(row, schema_only=True)
-            self.assertEqual(len(a3.data), 0)
-            
-        a3.open_stream(class_attr_name='Class_Rings')
-        for row in (rows+rows_extra):
-            a3.append(row)
-            self.assertEqual(len(a3.data), 0)
-        
-        fn = a3.close_stream()
-        s3 = open(fn, 'r').read()
-        #print s3
-        os.remove(fn)
-        # Note the rows that have features violating the schema are
-        # automatically omitted when in streaming mode.
-        self.assertEqual(s3, """% 
-@relation test-abalone
-@attribute 'Diameter' numeric
-@attribute 'Length' numeric
-@attribute 'Sex' {F,M}
-@attribute 'Whole_weight' numeric
-@attribute 'Class_Rings' integer
-@data
-{0 0.286, 1 0.35, 2 M, 4 15}
-{0 0.86, 2 F, 3 0.98, 4 7}
-{0 0.286, 1 0.35, 4 15}
-{0 0.86, 3 0.98, 4 7}
-""")
-
-if __name__ == '__main__':
-    unittest.main()

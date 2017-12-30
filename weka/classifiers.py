@@ -19,7 +19,9 @@ import subprocess
 from subprocess import Popen, PIPE
 import sys
 import tempfile
-import unittest
+import time
+import traceback
+from decimal import Decimal
 
 #https://pythonhosted.org/six/
 from six.moves import cPickle as pickle
@@ -28,7 +30,7 @@ from six import iteritems
 from six import u as unicode # pylint: disable=redefined-builtin
 
 import arff
-from arff import SPARSE, DENSE, Num, Nom, Int, Str
+from arff import SPARSE, DENSE, Num, Nom, Int, Str, Date
 
 DEFAULT_WEKA_JAR_PATH = '/usr/share/java/weka.jar:/usr/share/java/libsvm.jar'
 
@@ -39,7 +41,7 @@ for _cp in CP.split(os.pathsep):
         "file is installed or update your environment's WEKA_JAR_PATH to " + \
         "only include valid locations.") % (_cp,)
 
-# http://weka.sourceforge.net/doc/weka/classifiers/Classifier.html
+# http://weka.sourceforge.net/doc.dev/weka/classifiers/Classifier.html
 WEKA_CLASSIFIERS = [
 'weka.classifiers.bayes.AODE',
 'weka.classifiers.bayes.BayesNet',
@@ -159,12 +161,10 @@ class PredictionResult(object):
         self.probability = probability
     
     def __unicode__(self):
-        return unicode('<%s: actual=%s, predicted=%s, probability=%s>' \
-            % (type(self).__name__, self.actual, self.predicted, self.probability))
+        return unicode('<%s: actual=%s, predicted=%s, probability=%s>' % (type(self).__name__, self.actual, self.predicted, self.probability))
     
     def __str__(self):
-        return '<%s: actual=%s, predicted=%s, probability=%s>' \
-            % (type(self).__name__, self.actual, self.predicted, self.probability)
+        return '<%s: actual=%s, predicted=%s, probability=%s>' % (type(self).__name__, self.actual, self.predicted, self.probability)
     
 #     def __repr__(self):
 #         return unicode(self)
@@ -172,6 +172,17 @@ class PredictionResult(object):
     @property
     def certainty(self):
         return self.probability.get(self.predicted)
+    
+    @classmethod
+    def avg(cls, *instances):
+        total = Decimal(len(instances))
+        predicted = sum([instance.predicted for instance in instances if instance.predicted is not None])/total
+        probs = [instance.probability for instance in instances if instance.probability is not None]
+        if probs:
+            probability = sum(probs)
+        else:
+            probability = None
+        return cls(actual=None, predicted=predicted, probability=probability)
     
     def __hash__(self):
         return hash((self.actual, self.predicted, self.probability))
@@ -189,13 +200,11 @@ class PredictionResult(object):
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
-        return (self.actual, self.predicted, self.probability) == \
-            (other.actual, other.predicted, other.probability)
+        return (self.actual, self.predicted, self.probability) == (other.actual, other.predicted, other.probability)
 
 def get_weka_accuracy(arff_fn, arff_test_fn, cls):
     assert cls in WEKA_CLASSIFIERS, "Unknown Weka classifier: %s" % (cls,)
-    cmd = "java -cp /usr/share/java/weka.jar:/usr/share/java/libsvm.jar " + \
-        "%(cls)s -t \"%(arff_fn)s\" -T \"%(arff_test_fn)s\"" % locals()
+    cmd = "java -cp /usr/share/java/weka.jar:/usr/share/java/libsvm.jar %(cls)s -t \"%(arff_fn)s\" -T \"%(arff_test_fn)s\"" % locals()
     print(cmd)
     output = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True).communicate()[0]
     try:
@@ -269,7 +278,19 @@ class Classifier(object):
                     ckargs.append('%s %s' % (k, v))
         ckargs = ' '.join(ckargs)
         return ckargs
-        
+
+    @property
+    def training_correlation_coefficient(self):
+        matches = re.findall(r'Correlation coefficient\s+([0-9\.]+)', self.last_training_stdout)
+        if matches:
+            return float(matches[0])
+
+    @property
+    def training_mean_absolute_error(self):
+        matches = re.findall(r'Mean absolute error\s+([0-9\.]+)', self.last_training_stdout)
+        if matches:
+            return float(matches[0])
+
     def train(self, training_data, testing_data=None, verbose=False):
         """
         Updates the classifier with new data.
@@ -360,8 +381,7 @@ class Classifier(object):
             
             # Save schema.
             if not self.schema:
-                self.schema = arff.ArffFile.load(training_fn, schema_only=True)\
-                    .copy(schema_only=True)
+                self.schema = arff.ArffFile.load(training_fn, schema_only=True).copy(schema_only=True)
             
             # Save model.
             with open(model_fn, 'rb') as fin:
@@ -400,6 +420,8 @@ class Classifier(object):
             else:
                 assert isinstance(query_data, arff.ArffFile)
                 fd, query_fn = tempfile.mkstemp(suffix='.arff')
+                if verbose:
+                    print('writing', query_fn)
                 os.close(fd)
                 open(query_fn, 'w').write(query_data.write())
                 clean_query = True
@@ -408,8 +430,7 @@ class Classifier(object):
             # Validate model file.
             fd, model_fn = tempfile.mkstemp()
             os.close(fd)
-            assert self._model_data, \
-                "You must train this classifier before predicting."
+            assert self._model_data, "You must train this classifier before predicting."
             fout = open(model_fn, 'wb')
             fout.write(self._model_data)
             fout.close()
@@ -425,9 +446,7 @@ class Classifier(object):
                 #ckargs = self._get_ckargs_str(),
                 distribution=('-distribution' if distribution else ''),
             )
-            cmd = (
-                "java -cp %(CP)s %(classifier_name)s -p 0 %(distribution)s "
-                "-l \"%(model_fn)s\" -T \"%(query_fn)s\"") % args
+            cmd = ("java -cp %(CP)s %(classifier_name)s -p 0 %(distribution)s -l \"%(model_fn)s\" -T \"%(query_fn)s\"") % args
             if verbose:
                 print(cmd)
             p = Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True)
@@ -502,9 +521,7 @@ class Classifier(object):
                         r"\s+\+?\s+(?P<prob>[a-zA-Z0-9\.\?\,\*]+)",
                         stdout_str,
                         re.MULTILINE)
-                    assert matches, \
-                        ("No results found matching distribution pattern in stdout: %s") \
-                            % stdout_str
+                    assert matches, ("No results found matching distribution pattern in stdout: %s") % stdout_str
                     for match in matches:
                         prediction, prob = match
                         class_index, class_label = prediction.split(':')
@@ -528,8 +545,7 @@ class Classifier(object):
                         r"^\s*([0-9\.]+)\s+([a-zA-Z0-9\.\?\:]+)\s+([a-zA-Z0-9_\.\?\:]+)\s+",
                         stdout_str.decode('utf-8'),
                         re.MULTILINE)
-                    assert matches, \
-                        "No results found matching simple pattern in stdout: %s" % stdout_str
+                    assert matches, "No results found matching simple pattern in stdout: %s" % stdout_str
                     #print('matches:',len(matches)
                     for match in matches:
                         inst, actual, predicted = match
@@ -564,180 +580,111 @@ class Classifier(object):
             correct += result.predicted == result.actual
         return correct/float(total)
 
-class Test(unittest.TestCase):
+class EnsembleClassifier(object):
     
-    def test_arff(self):
+    def __init__(self, classes=None):
+        self.best = None, None # score, cls
+        self.training_results = {} # {name: score}
+        self.trained_classifiers = {} # {name: classifier instance}
+        self.prediction_results = {} # {name: results}
+        self.classes = list(classes or WEKA_CLASSIFIERS)
+        for cls in self.classes:
+            assert cls in WEKA_CLASSIFIERS, 'Invalid class: %s' % cls
     
-        data = arff.ArffFile.load(os.path.join(BP, 'test/abalone-train.arff'))
-        self.assertEqual(len(data.attributes), 9)
-        
-    def test_IBk(self):
-        
-        # Train a classifier.
-        print('Training IBk classifier...')
-        c = Classifier(name='weka.classifiers.lazy.IBk', ckargs={'-K':1})
-        training_fn = os.path.join(BP, 'test/abalone-train.arff')
-        c.train(training_fn, verbose=1)
-        self.assertTrue(c._model_data)
-        
-        # Make a valid query.
-        print('Using IBk classifier...')
-        query_fn = os.path.join(BP, 'test/abalone-query.arff')
-        predictions = list(c.predict(query_fn, verbose=1, cleanup=0))
-        pred0 = predictions[0]
-        print('pred0:', pred0)
-        pred1 = PredictionResult(actual=None, predicted=7, probability=None)
-        print('pred1:', pred1)
-        self.assertEqual(pred0, pred1)
-            
-        # Make a valid query.
-        with self.assertRaises(PredictionError):
-            query_fn = os.path.join(BP, 'test/abalone-query-bad.arff')
-            predictions = list(c.predict(query_fn, verbose=1, cleanup=0))
-            
-        # Make a valid query manually.
-        query = arff.ArffFile(relation='test', schema=[
-            ('Sex', ('M', 'F', 'I')),
-            ('Length', 'numeric'),
-            ('Diameter', 'numeric'),
-            ('Height', 'numeric'),
-            ('Whole weight', 'numeric'),
-            ('Shucked weight', 'numeric'),
-            ('Viscera weight', 'numeric'),
-            ('Shell weight', 'numeric'),
-            ('Class_Rings', 'integer'),
-        ])
-        query.append(['M', 0.35, 0.265, 0.09, 0.2255, 0.0995, 0.0485, 0.07, '?'])
-        data_str0 = """% 
-@relation test
-@attribute 'Sex' {F,I,M}
-@attribute 'Length' numeric
-@attribute 'Diameter' numeric
-@attribute 'Height' numeric
-@attribute 'Whole weight' numeric
-@attribute 'Shucked weight' numeric
-@attribute 'Viscera weight' numeric
-@attribute 'Shell weight' numeric
-@attribute 'Class_Rings' integer
-@data
-M,0.35,0.265,0.09,0.2255,0.0995,0.0485,0.07,?
-"""
-        data_str1 = query.write(fmt=DENSE)
-#        print(data_str0
-#        print(data_str1
-        self.assertEqual(data_str0, data_str1)
-        predictions = list(c.predict(query, verbose=1, cleanup=0))
-        self.assertEqual(predictions[0],
-            PredictionResult(actual=None, predicted=7, probability=None))
-        
-        # Test pickling.
-        fn = os.path.join(BP, 'test/IBk.pkl')
-        c.save(fn)
-        c = Classifier.load(fn)
-        predictions = list(c.predict(query, verbose=1, cleanup=0))
-        self.assertEqual(predictions[0],
-            PredictionResult(actual=None, predicted=7, probability=None))
-        #print('Pickle verified.')
-        
-        # Make a valid dict query manually.
-        query = arff.ArffFile(relation='test', schema=[
-            ('Sex', ('M', 'F', 'I')),
-            ('Length', 'numeric'),
-            ('Diameter', 'numeric'),
-            ('Height', 'numeric'),
-            ('Whole weight', 'numeric'),
-            ('Shucked weight', 'numeric'),
-            ('Viscera weight', 'numeric'),
-            ('Shell weight', 'numeric'),
-            ('Class_Rings', 'integer'),
-        ])
-        query.append({
-            'Sex': 'M',
-            'Length': 0.35,
-            'Diameter': 0.265,
-            'Height': 0.09,
-            'Whole weight': 0.2255,
-            'Shucked weight': 0.0995,
-            'Viscera weight': 0.0485,
-            'Shell weight': 0.07,
-            'Class_Rings': arff.MISSING,
-        })
-        predictions = list(c.predict(query, verbose=1, cleanup=0))
-        self.assertEqual(predictions[0],
-            PredictionResult(actual=None, predicted=7, probability=None))
-
-    def test_shortcut(self):
-        c = IBk(K=1) # pylint: disable=undefined-variable
-        
-        training_fn = os.path.join(BP, 'test/abalone-train.arff')
-        c.train(training_fn, verbose=1)
-        self.assertTrue(c._model_data)
-        
-        # Make a valid query.
-        query_fn = os.path.join(BP, 'test/abalone-query.arff')
-        predictions = list(c.predict(query_fn, verbose=1, cleanup=0))
-        self.assertEqual(len(predictions), 1)
-        self.assertEqual(predictions[0],
-            PredictionResult(actual=None, predicted=7, probability=None))
-        
-    def test_updateable(self):
+    @classmethod
+    def load(cls, fn, compress=True, *args, **kwargs):
+        raise NotImplementedError
+    
+    def get_best(self):
+        results = list(self.training_results.items())
+        results = sorted(results, key=lambda o: o[1])
+        print('name: <name> <coef> <inv mae>')
+        for name, data in results:
+            if isinstance(data, basestring):
+                continue
+            (coef, inv_mae) = data
+            print('name:', name, (coef, inv_mae))
+    
+    def get_errors(self):
+        results = list(self.training_results.items())
+        results = sorted(results)
+        for name, data in results:
+            if not isinstance(data, basestring):
+                continue
+            print('name:', name)
+            print(data)
+    
+    def get_training_coverage(self):
         """
-        Confirm updateable classifiers are used so that their model is in fact
-        updated and not overwritten.
+        Returns a ratio of classifiers that were able to be trained successfully.
         """
-        c = IBk(K=1) # pylint: disable=undefined-variable
-        self.assertTrue('IBk' in UPDATEABLE_WEKA_CLASSIFIER_NAMES)
-        
-        train_fn1 = os.path.join(BP, 'test/updateable-train-1.arff')
-        train_fn2 = os.path.join(BP, 'test/updateable-train-2.arff')
-        save_fn = os.path.join(BP, 'test/IBk.updated.pkl')
-        if os.path.isfile(save_fn):
-            os.remove(save_fn)
-        
-        c.train(train_fn1)
-        self.assertTrue(c._model_data)
-        
-        # It should have a perfect accuracy when tested on the same file
-        # it was trained with.
-        acc = c.test(train_fn1, verbose=1)
-        self.assertEqual(acc, 1.0)
-        
-        # It should have horrible accuracy on a completely different data
-        # file that it hasn't been trained on.
-        acc = c.test(train_fn2, verbose=1)
-        self.assertEqual(acc, 0.0)
-        pre_del_model = c._model_data
-        
-        # Reload the classifier from a pickle.
-        c.save(save_fn)
-        del c
-        
-        c = IBk.load(save_fn) # pylint: disable=undefined-variable
-        self.assertTrue(c._model_data)
-        self.assertEqual(c._model_data, pre_del_model)
-        
-        # Confirm the Weka model was persisted by confirming we still have
-        # perfect accuracy on the initial training file.
-        acc = c.test(train_fn1, verbose=1)
-        self.assertEqual(acc, 1.0)
-        
-        # Train the classifier on a completely different data set.
-        c.train(train_fn2)
-        
-        # Confirm it has perfect accuracy on the new data set.
-        acc = c.test(train_fn2, verbose=1)
-        self.assertEqual(acc, 1.0)
-        
-        # Confirm we still have perfect accuracy on the original data set.
-        acc = c.test(train_fn1, verbose=1)
-        self.assertEqual(acc, 1.0)
+        total = len(self.training_results)
+        i = sum(1 for data in self.training_results.values() if not isinstance(data, basestring))
+        return i/float(total)
+    
+    def train(self, training_data, testing_data=None, verbose=False):
 
-    def test_PredictionResult_cmp(self):
-        
-        a = PredictionResult(1, 2, 3)
-        b = PredictionResult(1, 2, 3)
-        
-        self.assertEqual(a, b)
+        total = len(self.classes)
+        i = 0
+        for name in self.classes:
+            i += 1
+            try:
+                c = Classifier(name=name)
+                print('Training classifier %i of %i %.02f%% %s...' % (i+1, total, i/float(total)*100, name))
+                t0 = time.time()
+                c.train(training_data=training_data, testing_data=testing_data, verbose=verbose)
+                self.trained_classifiers[name] = c
+                td = time.time() - t0
+                print('Training seconds:', td)
+                coef = c.training_correlation_coefficient
+                print('correlation_coefficient:', coef)
+                mae = c.training_mean_absolute_error
+                print('mean_absolute_error:', mae)
+                self.training_results[name] = (coef, 1/(1+float(mae)))
+            except Exception:
+                traceback.print_exc()
+                self.training_results[name] = traceback.format_exc()
 
-if __name__ == '__main__':
-    unittest.main()
+    def predict(self, query_data, **kwargs):
+        verbose = kwargs.get('verbose', False)
+        assert self.training_results, 'Classifier must be trained first!'
+        
+        best_coef = -1e9999999999
+        best_names = set()
+        for name, data in self.training_results.items():
+            if isinstance(data, basestring):
+                continue
+            (coef, inv_mae) = data
+            if coef > best_coef:
+                best_coef = coef
+                best_names = set([name])
+            elif coef == best_coef:
+                best_names.add(name)
+
+        total = len(best_names)
+        i = 0
+        for name in best_names:
+            i += 1
+            try:
+                c = self.trained_classifiers[name]
+                if verbose:
+                    print('Querying classifier %i of %i %.02f%% %s...' % (i, total, i/float(total)*100, name))
+                t0 = time.time()
+                results = list(c.predict(query_data=query_data, **kwargs))
+                td = time.time() - t0
+                self.prediction_results[name] = results
+            except Exception:
+                traceback.print_exc()
+                self.prediction_results[name] = traceback.format_exc()
+        
+        results = {} # {index, [results]}
+        for k, v in self.prediction_results.items():
+            for i, result in enumerate(v):
+                if isinstance(v, basestring):
+                    continue
+                results.setdefault(i, [])
+                results[i].append(result)
+        
+        results = [PredictionResult.avg(*data) for i, data in sorted(results.items())]
+
+        return results

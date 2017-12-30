@@ -122,7 +122,7 @@ include-ids=yes
 files-output=no
 
 # Tells whether to display a full report or only the messages
-reports=yes
+reports=no
 
 # Python expression which should return a note less than 10 (10 is the highest
 # note). You have access to the variables errors warning, statement which
@@ -337,7 +337,7 @@ ignore-docstrings=yes
 [FORMAT]
 
 # Maximum number of characters on a single line.
-max-line-length=100
+max-line-length=160
 
 # Maximum number of lines in a module
 max-module-lines=1000
