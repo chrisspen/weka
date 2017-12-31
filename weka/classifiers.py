@@ -504,6 +504,11 @@ class Classifier(object):
                 # inst#     actual  predicted error distribution
                 #     1        1:? 11:Acer_tr   +   0,0,0,0,0,0,0,0,0,0,*1,0,0,0,0,0...
 
+                # Expected output with simple format:
+                # inst#     actual  predicted      error
+                #     1          ?     -3.417          ? 
+
+
                 q = re.findall(
                     r'J48 pruned tree\s+\-+:\s+([0-9]+)\s+',
                     stdout_str.decode('utf-8'), re.MULTILINE|re.DOTALL)
@@ -517,8 +522,7 @@ class Classifier(object):
                 elif re.findall(r'error\s+(?:distribution|prediction)', stdout_str.decode('utf-8')):
                     # Check for distribution output.
                     matches = re.findall(
-                        r"^\s*[0-9\.]+\s+[a-zA-Z0-9\.\?\:]+\s+(?P<cls_value>[a-zA-Z0-9_\.\?\:]+)"
-                        r"\s+\+?\s+(?P<prob>[a-zA-Z0-9\.\?\,\*]+)",
+                        r"^\s*[0-9\.]+\s+[a-zA-Z0-9\.\?\:]+\s+(?P<cls_value>[a-zA-Z0-9_\.\?\:]+)\s+\+?\s+(?P<prob>[a-zA-Z0-9\.\?\,\*]+)",
                         stdout_str,
                         re.MULTILINE)
                     assert matches, ("No results found matching distribution pattern in stdout: %s") % stdout_str
@@ -542,7 +546,8 @@ class Classifier(object):
                 else:
                     # Otherwise, assume a simple output.
                     matches = re.findall(
-                        r"^\s*([0-9\.]+)\s+([a-zA-Z0-9\.\?\:]+)\s+([a-zA-Z0-9_\.\?\:]+)\s+",
+                        # inst#     actual  predicted 
+                        r"^\s*([0-9\.]+)\s+([a-zA-Z0-9\-\.\?\:]+)\s+([a-zA-Z0-9\-_\.\?\:]+)\s+",
                         stdout_str.decode('utf-8'),
                         re.MULTILINE)
                     assert matches, "No results found matching simple pattern in stdout: %s" % stdout_str
