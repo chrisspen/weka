@@ -1,4 +1,2 @@
-#PySide
-#matplotlib
-#numpy
-#scipy
+tox
+pylint==1.6.5
