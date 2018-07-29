@@ -1,6 +1,6 @@
 language: python
 python:
--   3.5
+-   3.6
 install:
 -   sudo apt-get install --yes weka libsvm-java
 -   pip install -r pip-requirements-test.txt -r pip-requirements.txt
