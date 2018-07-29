@@ -330,8 +330,7 @@ class ArffFile(object):
             at = self.attribute_types[name]
             if at == TYPE_INTEGER:
                 return int(index)
-            else:
-                return Decimal(str(index))
+            return Decimal(str(index))
         else:
             assert self.attribute_types[name] == TYPE_NOMINAL
             cls_index, cls_value = index.split(':')
@@ -603,7 +602,7 @@ class ArffFile(object):
 
     def parseline(self, l):
         if self.state == 'comment':
-            if len(l) > 0 and l[0] == '%':
+            if l and l[0] == '%':
                 self.comment.append(l[2:])
             else:
                 self.comment = '\n'.join(self.comment)
@@ -618,7 +617,7 @@ class ArffFile(object):
             if ll.startswith('@data'):
                 self.state = 'data'
         elif self.state == 'data':
-            if len(l) > 0 and l[0] != '%':
+            if l and l[0] != '%':
                 self._parse_data(l)
 
     def __parse_relation(self, l):
@@ -761,6 +760,7 @@ class ArffFile(object):
                         if v == MISSING:
                             v = Str(v)
                         else:
+                            print('prior_type:', prior_type, k, v)
                             v = TYPE_TO_CLASS[prior_type](v)
                     if v.value != MISSING:
                         assert prior_type == v.c_type, \

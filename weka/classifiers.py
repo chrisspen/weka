@@ -7,7 +7,7 @@ Light wrapper around Weka.
 Added method load_raw() to load a raw Weka model file directly.
 Added support to retrieving probability distribution of a prediction.
 """
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 
 from collections import namedtuple
 import gzip
@@ -28,9 +28,10 @@ from six.moves import cPickle as pickle
 from six import string_types as basestring # pylint: disable=redefined-builtin
 from six import iteritems
 from six import u as unicode # pylint: disable=redefined-builtin
+from six import PY3
 
-import arff
-from arff import SPARSE, DENSE, Num, Nom, Int, Str, Date
+from weka import arff
+from weka.arff import SPARSE, DENSE, Num, Nom, Int, Str, Date
 
 DEFAULT_WEKA_JAR_PATH = '/usr/share/java/weka.jar:/usr/share/java/libsvm.jar'
 
@@ -280,13 +281,19 @@ class Classifier(object):
 
     @property
     def training_correlation_coefficient(self):
-        matches = re.findall(r'Correlation coefficient\s+([0-9\.]+)', self.last_training_stdout)
+        s = self.last_training_stdout
+        if PY3:
+            s = s.decode('utf-8')
+        matches = re.findall(r'Correlation coefficient\s+([0-9\.]+)', s)
         if matches:
             return float(matches[0])
 
     @property
     def training_mean_absolute_error(self):
-        matches = re.findall(r'Mean absolute error\s+([0-9\.]+)', self.last_training_stdout)
+        s = self.last_training_stdout
+        if PY3:
+            s = s.decode('utf-8')
+        matches = re.findall(r'Mean absolute error\s+([0-9\.]+)', s)
         if matches:
             return float(matches[0])
 
@@ -653,12 +660,14 @@ class EnsembleClassifier(object):
     def get_best_predictors(self, tolerance, verbose=False):
         best_coef = -1e9999999999
         best_names = set()
+        if verbose:
+            print('Name\tCoef\tInv MAE')
         for name, data in sorted(self.training_results.items(), key=lambda o: o[1][0], reverse=True):
             if isinstance(data, basestring):
                 continue
             (coef, inv_mae) = data
             if verbose:
-                print('name:', name, coef, inv_mae)
+                print('%s\t%s\t%s' % (name, coef, inv_mae))
             if coef > best_coef:
                 best_coef = coef
                 best_names = set([name])
