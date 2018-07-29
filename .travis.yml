@@ -1,8 +1,10 @@
 language: python
 python:
--   3.6
+-   3.5
 install:
--   sudo apt-get install --yes weka libsvm-java
+-   sudo add-apt-repository -y ppa:deadsnakes/ppa
+-   sudo apt-get -yq update
+-   sudo apt-get -yq install python3.6 python3.6-dev weka libsvm-java
 -   pip install -r pip-requirements-test.txt -r pip-requirements.txt
 script:
 -   ./pep8.sh
