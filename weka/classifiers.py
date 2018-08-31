@@ -383,7 +383,7 @@ class Classifier(object):
                 print('stderr:')
                 print(stderr_str)
             # exclude "Warning" lines not to raise an error for a simple warning
-            stderr_str = '\n'.join(l for l in stderr_str.split('\n') if not "Warning" in l)
+            stderr_str = '\n'.join(l for l in stderr_str.decode('utf8').split('\n') if not "Warning" in l)
             if stderr_str:
                 raise TrainingError(stderr_str)
             
@@ -532,7 +532,7 @@ class Classifier(object):
                     # Check for distribution output.
                     matches = re.findall(
                         r"^\s*[0-9\.]+\s+[a-zA-Z0-9\.\?\:]+\s+(?P<cls_value>[a-zA-Z0-9_\.\?\:]+)\s+\+?\s+(?P<prob>[a-zA-Z0-9\.\?\,\*]+)",
-                        stdout_str,
+                        stdout_str.decode('utf-8'),
                         re.MULTILINE)
                     assert matches, ("No results found matching distribution pattern in stdout: %s") % stdout_str
                     for match in matches:
