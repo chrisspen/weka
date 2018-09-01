@@ -132,17 +132,20 @@ for _name in WEKA_CLASSIFIERS:
     exec('%s = _func' % _proper_name) # pylint: disable=exec-used
 
 # These can be trained incrementally.
-# http://weka.sourceforge.net/doc/weka/classifiers/UpdateableClassifier.html
+# http://weka.sourceforge.net/doc.stable/weka/classifiers/UpdateableClassifier.html
 UPDATEABLE_WEKA_CLASSIFIERS = [
 'weka.classifiers.bayes.AODE',
-'weka.classifiers.lazy.IB1', 
+'weka.classifiers.bayes.AODEsr',
+'weka.classifiers.bayes.DMNBtext',
+'weka.classifiers.lazy.IB1',
 'weka.classifiers.lazy.IBk',
 'weka.classifiers.lazy.KStar',
 'weka.classifiers.lazy.LWL',
+'weka.classifiers.bayes.NaiveBayesMultinomialUpdateable',
 'weka.classifiers.bayes.NaiveBayesUpdateable',
 'weka.classifiers.rules.NNge',
 'weka.classifiers.meta.RacedIncrementalLogitBoost',
-'weka.classifiers.functions.SGD',
+'weka.classifiers.functions.SPegasos',
 'weka.classifiers.functions.Winnow',
 ]
 UPDATEABLE_WEKA_CLASSIFIER_NAMES = set(_.split('.')[-1] for _ in UPDATEABLE_WEKA_CLASSIFIERS)
@@ -150,9 +153,11 @@ UPDATEABLE_WEKA_CLASSIFIER_NAMES = set(_.split('.')[-1] for _ in UPDATEABLE_WEKA
 WEKA_ACCURACY_REGEX = re.compile(r'===\s+Stratified cross-validation\s+===' + \
     r'\n+\s*\n+\s*Correctly Classified Instances\s+[0-9]+\s+([0-9\.]+)\s+%',
     re.DOTALL)
+
 WEKA_TEST_ACCURACY_REGEX = re.compile(r'===\s+Error on test data\s+===\n+\s' + \
     r'*\n+\s*Correctly Classified Instances\s+[0-9]+\s+([0-9\.]+)\s+%',
     re.DOTALL)
+
 
 class PredictionResult(object):
     
@@ -203,6 +208,7 @@ class PredictionResult(object):
             return NotImplemented
         return (self.actual, self.predicted, self.probability) == (other.actual, other.predicted, other.probability)
 
+
 def get_weka_accuracy(arff_fn, arff_test_fn, cls):
     assert cls in WEKA_CLASSIFIERS, "Unknown Weka classifier: %s" % (cls,)
     cmd = "java -cp /usr/share/java/weka.jar:/usr/share/java/libsvm.jar %(cls)s -t \"%(arff_fn)s\" -T \"%(arff_test_fn)s\"" % locals()
@@ -220,22 +226,16 @@ def get_weka_accuracy(arff_fn, arff_test_fn, cls):
         print("Unexpected Error: %s" % e)
         return 0
 
+
 class TrainingError(Exception):
     pass
+
 
 class PredictionError(Exception):
     pass
 
-class Classifier(object):
-    
-    def __init__(self, name, ckargs=None, model_data=None):
-        self._model_data = model_data
-        self.name = name # Weka classifier class name.
-        self.schema = None
-        self.ckargs = ckargs
-        
-        self.last_training_stdout = None
-        self.last_training_stderr = None
+
+class BaseClassifier(object):
 
     @classmethod
     def load(cls, fn, compress=True, *args, **kwargs):
@@ -245,6 +245,26 @@ class Classifier(object):
         if compress:
             return pickle.load(gzip.open(fn, 'rb'))
         return pickle.load(open(fn, 'rb'))
+
+    def save(self, fn, compress=True):
+        if compress and not fn.strip().lower().endswith('.gz'):
+            fn = fn + '.gz'
+        if compress:
+            pickle.dump(self, gzip.open(fn, 'wb'))
+        else:
+            pickle.dump(self, open(fn, 'wb'))
+
+
+class Classifier(BaseClassifier):
+    
+    def __init__(self, name, ckargs=None, model_data=None):
+        self._model_data = model_data
+        self.name = name # Weka classifier class name.
+        self.schema = None
+        self.ckargs = ckargs
+        
+        self.last_training_stdout = None
+        self.last_training_stderr = None
 
     @classmethod
     def load_raw(cls, model_fn, schema, *args, **kwargs):
@@ -257,14 +277,6 @@ class Classifier(object):
         c.schema = schema.copy(schema_only=True)
         c._model_data = open(model_fn, 'rb').read()
         return c
-        
-    def save(self, fn, compress=True):
-        if compress and not fn.strip().lower().endswith('.gz'):
-            fn = fn + '.gz'
-        if compress:
-            pickle.dump(self, gzip.open(fn, 'wb'))
-        else:
-            pickle.dump(self, open(fn, 'wb'))
         
     def _get_ckargs_str(self):
         ckargs = []
@@ -592,7 +604,8 @@ class Classifier(object):
             correct += result.predicted == result.actual
         return correct/float(total)
 
-class EnsembleClassifier(object):
+
+class EnsembleClassifier(BaseClassifier):
     
     def __init__(self, classes=None):
         self.best = None, None # score, cls
@@ -602,11 +615,7 @@ class EnsembleClassifier(object):
         self.classes = list(classes or WEKA_CLASSIFIERS)
         for cls in self.classes:
             assert cls in WEKA_CLASSIFIERS, 'Invalid class: %s' % cls
-    
-    @classmethod
-    def load(cls, fn, compress=True, *args, **kwargs):
-        raise NotImplementedError
-    
+
     def get_training_best(self):
         results = list(self.training_results.items())
         results = sorted(results, key=lambda o: o[1])
