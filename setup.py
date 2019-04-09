@@ -20,8 +20,11 @@ def get_reqs(*fns):
     return lst
 
 this_directory = path.abspath(path.dirname(__file__))
-with io.open(path.join(this_directory, 'README.md'), encoding='utf-8', errors='ignore') as f:
-    long_description = f.read()
+readme_fn = path.join(this_directory, 'README.md')
+long_description = ''
+if path.isfile(readme_fn):
+    with io.open(readme_fn, encoding='utf-8', errors='ignore') as f:
+        long_description = f.read()
 
 setup(name='weka',
     version=weka.__version__,
