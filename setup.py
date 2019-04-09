@@ -1,26 +1,33 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import os
+from os import path
+import io
 
 from setuptools import setup, find_packages
 
 import weka
 
-CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
+CURRENT_DIR = path.abspath(path.dirname(__file__))
 
 def get_reqs(*fns):
     lst = []
     for fn in fns:
-        for package in open(os.path.join(CURRENT_DIR, fn)).readlines():
+        for package in open(path.join(CURRENT_DIR, fn)).readlines():
             package = package.strip()
             if not package:
                 continue
             lst.append(package.strip())
     return lst
 
+this_directory = path.abspath(path.dirname(__file__))
+with io.open(path.join(this_directory, 'README.md'), encoding='utf-8', errors='ignore') as f:
+    long_description = f.read()
+
 setup(name='weka',
     version=weka.__version__,
     description='A Python wrapper for the Weka data mining library.',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     author='Chris Spencer',
     author_email='chrisspen@gmail.com',
     url='https://github.com/chrisspen/weka',

@@ -653,7 +653,7 @@ class EnsembleClassifier(BaseClassifier):
             i += 1
             try:
                 c = Classifier(name=name)
-                print('Training classifier %i of %i %.02f%% %s...' % (i+1, total, i/float(total)*100, name))
+                print('Training classifier %i of %i %.02f%% %s...' % (i, total, i/float(total)*100, name))
                 t0 = time.time()
                 c.train(training_data=training_data, testing_data=testing_data, verbose=verbose)
                 self.trained_classifiers[name] = c
