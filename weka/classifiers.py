@@ -619,7 +619,7 @@ class EnsembleClassifier(BaseClassifier):
             assert cls in WEKA_CLASSIFIERS, 'Invalid class: %s' % cls
 
     def get_training_best(self):
-        results = list(self.training_results.items())
+        results = list((a, b or 0) for a, b in self.training_results.items())
         results = sorted(results, key=lambda o: o[1])
         print('name: <name> <coef> <inv mae>')
         for name, data in results:
