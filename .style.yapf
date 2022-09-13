@@ -1,0 +1,16 @@
+[style]
+allow_split_before_dict_value = false
+based_on_style = pep8
+blank_line_before_nested_class_or_def = true
+coalesce_brackets = true
+column_limit = 160
+continuation_align_style = space
+continuation_indent_width = 4
+dedent_closing_brackets = true
+indent_dictionary_value = false
+indent_width = 4
+space_between_ending_comma_and_closing_bracket = false
+spaces_before_comment = 1
+split_before_arithmetic_operator = false
+split_complex_comprehension = true
+split_penalty_for_added_line_split = 10

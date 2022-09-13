@@ -55,6 +55,10 @@ To run unittests across multiple Python versions, install:
 
     sudo apt-get install python3.4-minimal python3.4-dev python3.5-minimal python3.5-dev
 
+To setup a local Python virtual environment for testing, run:
+
+    ./init_virtualenv.sh
+
 To run all [tests](http://tox.readthedocs.org/en/latest/):
 
     export TESTNAME=; tox

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 from os import path
 import io
 
@@ -9,24 +8,28 @@ import weka
 
 CURRENT_DIR = path.abspath(path.dirname(__file__))
 
+
 def get_reqs(*fns):
     lst = []
     for fn in fns:
-        for package in open(path.join(CURRENT_DIR, fn)).readlines():
-            package = package.strip()
-            if not package:
-                continue
-            lst.append(package.strip())
+        with open(path.join(CURRENT_DIR, fn), encoding='utf-8') as fin:
+            for package in fin.readlines():
+                package = package.strip()
+                if not package:
+                    continue
+                lst.append(package.strip())
     return lst
+
 
 this_directory = path.abspath(path.dirname(__file__))
 readme_fn = path.join(this_directory, 'README.md')
 long_description = ''
 if path.isfile(readme_fn):
-    with io.open(readme_fn, encoding='utf-8', errors='ignore') as f:
+    with open(readme_fn, encoding='utf-8', errors='ignore') as f:
         long_description = f.read()
 
-setup(name='weka',
+setup(
+    name='weka',
     version=weka.__version__,
     description='A Python wrapper for the Weka data mining library.',
     long_description=long_description,
@@ -37,18 +40,16 @@ setup(name='weka',
     license='LGPL License',
     packages=find_packages(),
     package_data={
-        'weka': [
-            'fixtures/*'
-        ],
+        'weka': ['fixtures/*'],
     },
     # https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
         "Programming Language :: Python",
-        "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3.3",
         "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.9",
         "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)",
         "Operating System :: OS Independent",
